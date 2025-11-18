@@ -40,24 +40,31 @@ CONFIG = {
 # ============================================================================
 
 def setup_logging():
-    """Setup logging configuration"""
+    """Setup logging configuration with UTF-8 encoding for Windows compatibility"""
     log_format = '%(asctime)s - %(levelname)s - %(message)s'
     
+    # Create handlers with UTF-8 encoding for Windows compatibility
+    handlers = []
+    
     if CONFIG["ENABLE_LOGGING"]:
-        logging.basicConfig(
-            level=logging.INFO,
-            format=log_format,
-            handlers=[
-                logging.FileHandler(CONFIG["LOG_FILE"]),
-                logging.StreamHandler(sys.stdout)
-            ]
-        )
-    else:
-        logging.basicConfig(
-            level=logging.INFO,
-            format=log_format,
-            handlers=[logging.StreamHandler(sys.stdout)]
-        )
+        # File handler with UTF-8 encoding
+        file_handler = logging.FileHandler(CONFIG["LOG_FILE"], encoding='utf-8')
+        file_handler.setFormatter(logging.Formatter(log_format))
+        handlers.append(file_handler)
+    
+    # Console handler with UTF-8 encoding
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(logging.Formatter(log_format))
+    # Set UTF-8 encoding for console output (Python 3.7+)
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+    handlers.append(console_handler)
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format=log_format,
+        handlers=handlers
+    )
 
 # ============================================================================
 # TELEGRAM NOTIFICATION CLASS
