@@ -436,7 +436,7 @@ class DhanRiskManager:
                 kill_switch_status = result.get('killSwitchStatus', 'N/A')
                 logging.warning("=" * 70)
                 logging.warning("=" * 70)
-                if kill_switch_status == "ACTIVATED":
+                if "activated" in str.lower(kill_switch_status):
                     logging.warning("🔴 KILL SWITCH ACTIVATED SUCCESSFULLY! 🔴")
                     logging.warning("Trading disabled for the current trading day")
                     logging.warning(f"Client ID: {client_id}")
