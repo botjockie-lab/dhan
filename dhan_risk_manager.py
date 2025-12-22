@@ -33,6 +33,9 @@ CONFIG = {
     "TELEGRAM_CHAT_ID": os.getenv("TELEGRAM_CHAT_ID"),        # Your Telegram chat ID
     "SEND_PNL_UPDATES": os.getenv("SEND_PNL_UPDATES"),      # Send PNL on every check
     "SEND_ONLY_ALERTS": os.getenv("SEND_ONLY_ALERTS"),       # Only send stoploss/target alerts (not every check)
+    # Per-position percent-based profit taking
+    "ENABLE_POSITION_PERCENT_TAKE": os.getenv("ENABLE_POSITION_PERCENT_TAKE"),  # Enable per-position percent take
+    "POSITION_PERCENT_TAKE": float(os.getenv("POSITION_PERCENT_TAKE") or 0.0),  # Percent profit threshold per position (e.g., 5.0)
 }
 
 # ============================================================================
@@ -350,6 +353,49 @@ class DhanRiskManager:
         logging.warning("=" * 70)
         
         return failed_count == 0
+
+    def square_off_position(self, pos):
+        """Square off a single position by placing an opposite market order."""
+        try:
+            position_data = pos['position_data']
+            net_qty = int(position_data.get('netQty', 0))
+
+            if net_qty == 0:
+                logging.info(f"  ✓ {pos['symbol']}: No net position to square off")
+                return True
+
+            transaction_type = "SELL" if net_qty > 0 else "BUY"
+            quantity = abs(net_qty)
+
+            order_payload = {
+                "dhanClientId": self.dhan_client_id or position_data.get('dhanClientId'),
+                "transactionType": transaction_type,
+                "exchangeSegment": position_data.get('exchangeSegment'),
+                "productType": position_data.get('productType'),
+                "orderType": "MARKET",
+                "validity": "DAY",
+                "securityId": position_data.get('securityId'),
+                "quantity": str(quantity),
+                "disclosedQuantity": "",
+                "price": "",
+                "triggerPrice": "",
+                "afterMarketOrder": False
+            }
+
+            url = f"{self.base_url}/orders"
+            response = requests.post(url, headers=self.headers, json=order_payload, timeout=10)
+
+            if response.status_code == 200:
+                result = response.json()
+                logging.warning(f"  ✓ {pos['symbol']}: Squared off {quantity} qty ({transaction_type}) - Order ID: {result.get('orderId')}")
+                return True
+            else:
+                logging.error(f"  ✗ {pos['symbol']}: Failed to square off - {response.text}")
+                return False
+
+        except Exception as e:
+            logging.error(f"  ✗ {pos['symbol']}: Exception during square off - {e}")
+            return False
     
     def cancel_all_pending_orders(self):
         """Cancel all pending orders"""
@@ -486,6 +532,70 @@ class DhanRiskManager:
             # Get position details for telegram message
             positions_data = self._get_positions_for_telegram()
             self.telegram.send_pnl_update(pnl, self.daily_stoploss, self.daily_target, positions_data)
+
+        # Per-position percent-based profit-taking
+        try:
+            if CONFIG.get("ENABLE_POSITION_PERCENT_TAKE") and CONFIG.get("POSITION_PERCENT_TAKE", 0) > 0:
+                threshold_pct = float(CONFIG.get("POSITION_PERCENT_TAKE", 0.0))
+                logging.info(f"Checking per-position percent-take threshold: {threshold_pct}%")
+                positions_to_square = []
+
+                for pos in position_details:
+                    pos_data = pos.get('position_data', {})
+                    try:
+                        net_qty = int(pos_data.get('netQty', 0))
+                    except Exception:
+                        net_qty = 0
+
+                    if net_qty == 0:
+                        continue
+
+                    # Try common average price keys
+                    avg_price = None
+                    for key in ('averagePrice', 'avgPrice', 'avg_price', 'average_price', 'entryPrice', 'entry_price'):
+                        val = pos_data.get(key)
+                        if val is not None and val != "":
+                            try:
+                                avg_price = float(val)
+                                break
+                            except Exception:
+                                continue
+
+                    if not avg_price or avg_price == 0:
+                        logging.debug(f"Skipping percent check for {pos.get('symbol')} due to zero avg price")
+                        continue
+
+                    invested_value = abs(net_qty) * avg_price
+                    if invested_value == 0:
+                        continue
+
+                    position_pnl = pos.get('total', 0)
+                    try:
+                        percent = (position_pnl / invested_value) * 100
+                    except Exception:
+                        percent = 0
+
+                    logging.info(f"{pos.get('symbol')}: P&L=₹{position_pnl:.2f} | Invested=₹{invested_value:.2f} | Percent={percent:.2f}%")
+
+                    if percent >= threshold_pct:
+                        positions_to_square.append((pos, percent))
+
+                # Square off identified positions
+                if positions_to_square:
+                    for p, pct in positions_to_square:
+                        sym = p.get('symbol')
+                        logging.warning(f"Position percent threshold met for {sym}: {pct:.2f}% >= {threshold_pct}% — squaring off")
+                        success = self.square_off_position(p)
+                        # Notify via Telegram (simple message)
+                        if self.telegram:
+                            msg = f"⚡ Per-position profit target reached for <b>{sym}</b> — {pct:.2f}% ≥ {threshold_pct}%\nSquaring off {abs(int(p['position_data'].get('netQty',0)))} qty."
+                            try:
+                                self.telegram.send_message(msg)
+                            except Exception as e:
+                                logging.error(f"Failed to send Telegram per-position message: {e}")
+
+        except Exception as e:
+            logging.error(f"Error during per-position percent checks: {e}")
         
         # Check if stoploss is breached
         if pnl <= self.daily_stoploss:
