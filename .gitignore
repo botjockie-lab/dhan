@@ -1,2 +1,6 @@
 dhan_risk_manager.log
 .env
+__pycache__/
+*.py[cod]
+*.pyo
+
