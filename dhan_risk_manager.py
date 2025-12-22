@@ -631,11 +631,26 @@ class DhanRiskManager:
             
             # Send Telegram alert before kill switch
             if self.telegram:
-                self.telegram.send_kill_switch_alert("STOPLOSS", pnl, self.daily_stoploss)
+                try:
+                    logging.info("Attempting to send Telegram kill-switch (STOPLOSS) alert")
+                    logging.info(f"Telegram bot present: {bool(self.telegram.bot_token)}, chat id present: {bool(self.telegram.chat_id)}")
+                    sent = self.telegram.send_kill_switch_alert("STOPLOSS", pnl, self.daily_stoploss)
+                    logging.info(f"Telegram kill-switch (STOPLOSS) alert sent: {sent}")
+                except Exception as e:
+                    logging.error(f"Exception while sending Telegram kill-switch alert: {e}")
             self.cancel_all_pending_orders()
             self.square_off_all_positions(position_details)
             kill_switch_result = self.trigger_kill_switch(position_details)
             if kill_switch_result[0]:
+                # Send confirmation that kill switch was activated
+                if self.telegram:
+                    try:
+                        logging.info("Sending Telegram confirmation: kill-switch ACTIVATED (STOPLOSS)")
+                        conf_msg = f"🔴 <b>Kill Switch Activated</b> (STOPLOSS)\nP&L: ₹{pnl:,.2f}\nStatus: {kill_switch_result[1]}"
+                        sent = self.telegram.send_message(conf_msg)
+                        logging.info(f"Telegram kill-switch confirmation sent: {sent}")
+                    except Exception as e:
+                        logging.error(f"Failed to send kill-switch confirmation message: {e}")
                 return ["STOPLOSS_BREACHED", kill_switch_result[1]]
             else:
                 return ["KILL_SWITCH_FAILED", kill_switch_result[1]]
@@ -646,9 +661,24 @@ class DhanRiskManager:
             
             # Send Telegram alert before kill switch
             if self.telegram:
-                self.telegram.send_kill_switch_alert("TARGET", pnl, self.daily_target)
+                try:
+                    logging.info("Attempting to send Telegram kill-switch (TARGET) alert")
+                    logging.info(f"Telegram bot present: {bool(self.telegram.bot_token)}, chat id present: {bool(self.telegram.chat_id)}")
+                    sent = self.telegram.send_kill_switch_alert("TARGET", pnl, self.daily_target)
+                    logging.info(f"Telegram kill-switch (TARGET) alert sent: {sent}")
+                except Exception as e:
+                    logging.error(f"Exception while sending Telegram kill-switch alert: {e}")
             kill_switch_result = self.trigger_kill_switch(position_details)
             if kill_switch_result[0]:
+                # Send confirmation that kill switch was activated
+                if self.telegram:
+                    try:
+                        logging.info("Sending Telegram confirmation: kill-switch ACTIVATED (TARGET)")
+                        conf_msg = f"🟢 <b>Kill Switch Activated</b> (TARGET)\nP&L: ₹{pnl:,.2f}\nStatus: {kill_switch_result[1]}"
+                        sent = self.telegram.send_message(conf_msg)
+                        logging.info(f"Telegram kill-switch confirmation sent: {sent}")
+                    except Exception as e:
+                        logging.error(f"Failed to send kill-switch confirmation message: {e}")
                 return ["TARGET_ACHIEVED", kill_switch_result[1]]
             else:
                 return ["KILL_SWITCH_FAILED", kill_switch_result[1]]
