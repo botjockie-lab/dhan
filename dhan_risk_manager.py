@@ -737,6 +737,12 @@ def monitor_risk():
         logging.warning("\n🛑 STOPPING MONITORING - KILL SWITCH ACTIVATED 🛑")
         logging.warning("Script will continue running but no more checks will be performed")
         logging.warning("You can safely stop the script now (Ctrl+C)")
+        # Clear all scheduled jobs (periodic PNL updates and checks)
+        try:
+            schedule.clear()
+            logging.info("Cleared all scheduled jobs due to kill switch activation")
+        except Exception as e:
+            logging.error(f"Error clearing scheduled jobs: {e}")
         return schedule.CancelJob
     elif status[0] == "KILL_SWITCH_FAILED":
         logging.error(f"Kill switch activation failed! {status[1]}")
@@ -767,6 +773,11 @@ def send_periodic_pnl():
                 enabled=True
             )
         risk_manager = DhanRiskManager(CONFIG, telegram_notifier)
+
+    # If kill switch already triggered, cancel further periodic updates
+    if risk_manager.kill_switch_triggered:
+        logging.info("Kill switch already active — cancelling periodic PNL job")
+        return schedule.CancelJob
 
     result = risk_manager.get_positions_pnl()
     if result is None or result[0] is None:
