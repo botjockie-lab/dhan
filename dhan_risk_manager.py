@@ -27,16 +27,39 @@ CONFIG = {
     "ENABLE_LOGGING": True,                     # Save logs to file
     "LOG_FILE": "dhan_risk_manager.log",       # Log file name
     
-    # Telegram Configuration
-    "TELEGRAM_ENABLED": os.getenv("TELEGRAM_ENABLED"),       # Enable Telegram notifications
+    # Telegram Configuration (booleans parsed from env)
+    "TELEGRAM_ENABLED": os.getenv("TELEGRAM_ENABLED"),       # Enable Telegram notifications (parsed later)
     "TELEGRAM_BOT_TOKEN": os.getenv("TELEGRAM_BOT_TOKEN"),    # Get from @BotFather
     "TELEGRAM_CHAT_ID": os.getenv("TELEGRAM_CHAT_ID"),        # Your Telegram chat ID
-    "SEND_PNL_UPDATES": os.getenv("SEND_PNL_UPDATES"),      # Send PNL on every check
-    "SEND_ONLY_ALERTS": os.getenv("SEND_ONLY_ALERTS"),       # Only send stoploss/target alerts (not every check)
+    "SEND_PNL_UPDATES": os.getenv("SEND_PNL_UPDATES"),      # Send PNL on every check (parsed later)
+    "SEND_ONLY_ALERTS": os.getenv("SEND_ONLY_ALERTS"),       # Only send stoploss/target alerts (not every check) (parsed later)
     # Per-position percent-based profit taking
     "ENABLE_POSITION_PERCENT_TAKE": os.getenv("ENABLE_POSITION_PERCENT_TAKE"),  # Enable per-position percent take
     "POSITION_PERCENT_TAKE": float(os.getenv("POSITION_PERCENT_TAKE") or 0.0),  # Percent profit threshold per position (e.g., 5.0)
+    # Telegram periodic PNL alert interval (seconds). 0 or missing => disabled
+    "TELEGRAM_PNL_INTERVAL_SECONDS": int(os.getenv("TELEGRAM_PNL_INTERVAL_SECONDS") or 0),
 }
+
+
+# Helper to parse boolean-ish env values
+def _env_to_bool(val, default=False):
+    if isinstance(val, bool):
+        return val
+    if val is None:
+        return default
+    return str(val).strip().lower() in ("1", "true", "yes", "y", "on")
+
+# Normalize boolean-like config values (overwrite string values with booleans)
+CONFIG["TELEGRAM_ENABLED"] = _env_to_bool(CONFIG.get("TELEGRAM_ENABLED"), False)
+CONFIG["SEND_PNL_UPDATES"] = _env_to_bool(CONFIG.get("SEND_PNL_UPDATES"), False)
+CONFIG["SEND_ONLY_ALERTS"] = _env_to_bool(CONFIG.get("SEND_ONLY_ALERTS"), False)
+CONFIG["ENABLE_POSITION_PERCENT_TAKE"] = _env_to_bool(CONFIG.get("ENABLE_POSITION_PERCENT_TAKE"), False)
+
+# If periodic Telegram PNL updates are enabled, disable per-check PNL sends to avoid duplicates
+if CONFIG.get("TELEGRAM_PNL_INTERVAL_SECONDS", 0) > 0:
+    CONFIG["EFFECTIVE_SEND_PNL_UPDATES"] = False
+else:
+    CONFIG["EFFECTIVE_SEND_PNL_UPDATES"] = CONFIG["SEND_PNL_UPDATES"]
 
 # ============================================================================
 # LOGGING SETUP
@@ -528,8 +551,12 @@ class DhanRiskManager:
                     f"Stoploss=₹{self.daily_stoploss:.2f} | "
                     f"Target=₹{self.daily_target:.2f}")
         
-        # Send PNL update to Telegram if enabled
-        if self.telegram and CONFIG["SEND_PNL_UPDATES"] and not CONFIG["SEND_ONLY_ALERTS"]:
+        # Send PNL update to Telegram if enabled and effective send flag is true.
+        if (
+            self.telegram
+            and CONFIG.get("EFFECTIVE_SEND_PNL_UPDATES", False)
+            and not CONFIG["SEND_ONLY_ALERTS"]
+        ):
             # Get position details for telegram message
             positions_data = self._get_positions_for_telegram()
             self.telegram.send_pnl_update(pnl, self.daily_stoploss, self.daily_target, positions_data)
@@ -716,6 +743,44 @@ def monitor_risk():
         if telegram_notifier:
             telegram_notifier.send_error_alert(f"Kill switch activation FAILED! {status[1]}")
 
+
+def send_periodic_pnl():
+    """Send periodic PNL update via Telegram according to configured interval."""
+    global risk_manager, telegram_notifier
+
+    if not CONFIG.get("TELEGRAM_ENABLED"):
+        return
+
+    if CONFIG.get("TELEGRAM_PNL_INTERVAL_SECONDS", 0) <= 0:
+        return
+
+    if not is_market_hours():
+        logging.info("Outside market hours. Skipping Telegram periodic PNL update.")
+        return
+
+    # Ensure instances exist
+    if risk_manager is None:
+        if CONFIG["TELEGRAM_ENABLED"]:
+            telegram_notifier = TelegramNotifier(
+                bot_token=CONFIG["TELEGRAM_BOT_TOKEN"],
+                chat_id=CONFIG["TELEGRAM_CHAT_ID"],
+                enabled=True
+            )
+        risk_manager = DhanRiskManager(CONFIG, telegram_notifier)
+
+    result = risk_manager.get_positions_pnl()
+    if result is None or result[0] is None:
+        logging.warning("Could not fetch PNL for periodic Telegram update.")
+        if telegram_notifier:
+            telegram_notifier.send_error_alert("Failed to fetch PNL for periodic update")
+        return
+
+    pnl, _ = result
+    positions_data = risk_manager._get_positions_for_telegram()
+
+    if telegram_notifier:
+        telegram_notifier.send_pnl_update(pnl, risk_manager.daily_stoploss, risk_manager.daily_target, positions_data)
+
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
@@ -773,8 +838,11 @@ def main():
     logging.info(f"  Market Hours: {CONFIG['MARKET_START_TIME']} - {CONFIG['MARKET_END_TIME']}")
     logging.info(f"  Telegram Alerts: {'Enabled' if CONFIG['TELEGRAM_ENABLED'] else 'Disabled'}")
     if CONFIG['TELEGRAM_ENABLED']:
-        logging.info(f"    - Send PNL Updates: {CONFIG['SEND_PNL_UPDATES']}")
+        logging.info(f"    - Send PNL Updates (env): {CONFIG['SEND_PNL_UPDATES']}")
+        logging.info(f"    - Send PNL Updates (effective): {CONFIG.get('EFFECTIVE_SEND_PNL_UPDATES', False)}")
         logging.info(f"    - Only Alerts Mode: {CONFIG['SEND_ONLY_ALERTS']}")
+        if CONFIG.get('TELEGRAM_PNL_INTERVAL_SECONDS', 0) > 0:
+            logging.info(f"    - Periodic PNL interval: {CONFIG['TELEGRAM_PNL_INTERVAL_SECONDS']} second(s) (per-check PNL disabled)")
     logging.info("=" * 70)
     
     # Initialize Telegram and send startup message
@@ -796,6 +864,11 @@ def main():
     logging.info("Press Ctrl+C to stop\n")
 
     schedule.every(CONFIG["CHECK_INTERVAL_SECONDS"]).seconds.do(monitor_risk)
+
+    # Schedule periodic Telegram PNL updates if enabled and interval > 0
+    if CONFIG.get("TELEGRAM_ENABLED") and CONFIG.get("TELEGRAM_PNL_INTERVAL_SECONDS", 0) > 0:
+        logging.info(f"Scheduling Telegram PNL updates every {CONFIG['TELEGRAM_PNL_INTERVAL_SECONDS']} second(s)")
+        schedule.every(CONFIG["TELEGRAM_PNL_INTERVAL_SECONDS"]).seconds.do(send_periodic_pnl)
 
     try:
         while True:
