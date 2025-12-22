@@ -237,7 +237,8 @@ class DhanRiskManager:
                 
                 if not data:
                     logging.info("No open positions found")
-                    return 0
+                    # Return a consistent tuple: (pnl, position_details)
+                    return 0, []
                 
                 # Extract client ID from first position
                 if data and not self.dhan_client_id:
