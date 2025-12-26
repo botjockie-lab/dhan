@@ -25,7 +25,8 @@ CONFIG = {
     "MARKET_START_TIME": os.getenv("MARKET_START_TIME"), # Market opening time
     "MARKET_END_TIME": os.getenv("MARKET_END_TIME"), # Market closing time
     "ENABLE_LOGGING": True,                     # Save logs to file
-    "LOG_FILE": "dhan_risk_manager.log",       # Log file name
+    # Read log file path from environment variable `LOG_FILE`, fallback to default name
+    "LOG_FILE": os.getenv("LOG_FILE", "/tmp/dhan_risk_manager.log"),       # Log file name
     
     # Telegram Configuration (booleans parsed from env)
     "TELEGRAM_ENABLED": os.getenv("TELEGRAM_ENABLED"),       # Enable Telegram notifications (parsed later)
