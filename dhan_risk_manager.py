@@ -65,6 +65,10 @@ CONFIG = {
     # Per-position percent-based stoploss
     "ENABLE_POSITION_PERCENT_STOPLOSS": os.getenv("ENABLE_POSITION_PERCENT_STOPLOSS"),  # Enable per-position percent stoploss
     "POSITION_PERCENT_STOPLOSS": float(os.getenv("POSITION_PERCENT_STOPLOSS") or 0.0),  # Percent stoploss threshold per position (positive value, e.g., 2.0 means -2%)
+    # Trailing Stoploss Configuration
+    "ENABLE_TRAILING_STOPLOSS": os.getenv("ENABLE_TRAILING_STOPLOSS"),  # Enable trailing stoploss feature
+    "TRAILING_STOPLOSS_ACTIVATE_PROFIT": float(os.getenv("TRAILING_STOPLOSS_ACTIVATE_PROFIT") or 0.0), # Profit level to activate trailing
+    "TRAILING_STOPLOSS_TRAIL_PERCENT": float(os.getenv("TRAILING_STOPLOSS_TRAIL_PERCENT") or 0.0),  # Trail percentage (e.g., 10 for 10%)
     # Telegram periodic PNL alert interval (seconds). 0 or missing => disabled
     "TELEGRAM_PNL_INTERVAL_SECONDS": int(os.getenv("TELEGRAM_PNL_INTERVAL_SECONDS") or 0),
 }
@@ -84,6 +88,7 @@ CONFIG["SEND_PNL_UPDATES"] = _env_to_bool(CONFIG.get("SEND_PNL_UPDATES"), False)
 CONFIG["SEND_ONLY_ALERTS"] = _env_to_bool(CONFIG.get("SEND_ONLY_ALERTS"), False)
 CONFIG["ENABLE_POSITION_PERCENT_TAKE"] = _env_to_bool(CONFIG.get("ENABLE_POSITION_PERCENT_TAKE"), False)
 CONFIG["ENABLE_POSITION_PERCENT_STOPLOSS"] = _env_to_bool(CONFIG.get("ENABLE_POSITION_PERCENT_STOPLOSS"), False)
+CONFIG["ENABLE_TRAILING_STOPLOSS"] = _env_to_bool(CONFIG.get("ENABLE_TRAILING_STOPLOSS"), False)
 
 # Normalize log level string to numeric logging level
 try:
@@ -266,7 +271,15 @@ class TelegramNotifier:
    🔴 Stoploss: ₹{config['DAILY_STOPLOSS']:,.2f}
    🟢 Target: ₹{config['DAILY_TARGET']:,.2f}
    ⏱ Check Interval: {config['CHECK_INTERVAL_SECONDS']} second(s)
+"""
+        if config.get("ENABLE_TRAILING_STOPLOSS"):
+            message += f"""
+   🚀 <b>Trailing SL Enabled</b>
+      - Activate at: ₹{config['TRAILING_STOPLOSS_ACTIVATE_PROFIT']:,.2f}
+      - Trail by: {config['TRAILING_STOPLOSS_TRAIL_PERCENT']}%
+"""
 
+        message += f"""
 🕐 Market Hours: {config['MARKET_START_TIME']} - {config['MARKET_END_TIME']}
 
 ✅ Monitoring active
@@ -607,6 +620,29 @@ class DhanRiskManager:
         logging.info(f"Risk Check: P&L=₹{pnl:.2f} | "
                     f"Stoploss=₹{self.daily_stoploss:.2f} | "
                     f"Target=₹{self.daily_target:.2f}")
+
+        # Trailing Stoploss Logic
+        if CONFIG.get("ENABLE_TRAILING_STOPLOSS") and pnl > 0:
+            activation_profit = float(CONFIG.get("TRAILING_STOPLOSS_ACTIVATE_PROFIT", 0.0))
+            trail_percent = float(CONFIG.get("TRAILING_STOPLOSS_TRAIL_PERCENT", 0.0))
+
+            if activation_profit > 0 and trail_percent > 0 and pnl >= activation_profit:
+                # Calculate new potential stoploss
+                new_trailing_stoploss = pnl * (1 - (trail_percent / 100))
+
+                # Stoploss should only move up
+                if new_trailing_stoploss > self.daily_stoploss:
+                    old_sl = self.daily_stoploss
+                    self.daily_stoploss = new_trailing_stoploss
+                    logging.warning(f"🚀 TRAILING STOPLOSS UPDATED: New SL=₹{self.daily_stoploss:.2f} (was ₹{old_sl:.2f}) | Current PNL=₹{pnl:.2f}")
+                    
+                    # Notify via Telegram
+                    if self.telegram:
+                        try:
+                            msg = f"🚀 <b>Trailing Stoploss Updated</b>\n\nNew SL: ₹{self.daily_stoploss:,.2f}\nPNL: ₹{pnl:,.2f}"
+                            self.telegram.send_message(msg)
+                        except Exception as e:
+                            logging.error(f"Failed to send Telegram trailing SL update: {e}")
         
         # Send PNL update to Telegram if enabled and effective send flag is true.
         if (
@@ -959,6 +995,13 @@ def validate_config():
         
         if CONFIG["TELEGRAM_CHAT_ID"] == "YOUR_CHAT_ID":
             errors.append("TELEGRAM_CHAT_ID not configured (Telegram is enabled)")
+
+    # Validate Trailing Stoploss config if enabled
+    if CONFIG["ENABLE_TRAILING_STOPLOSS"]:
+        if CONFIG["TRAILING_STOPLOSS_ACTIVATE_PROFIT"] <= 0:
+            errors.append("TRAILING_STOPLOSS_ACTIVATE_PROFIT must be positive")
+        if not (0 < CONFIG["TRAILING_STOPLOSS_TRAIL_PERCENT"] < 100):
+            errors.append("TRAILING_STOPLOSS_TRAIL_PERCENT must be between 0 and 100")
     
     return errors
 
@@ -988,6 +1031,10 @@ def main():
     logging.info(f"  Check Interval: {CONFIG['CHECK_INTERVAL_SECONDS']} second(s)")
     logging.info(f"  Market Hours: {CONFIG['MARKET_START_TIME']} - {CONFIG['MARKET_END_TIME']}")
     logging.info(f"  Log Level: {CONFIG.get('LOG_LEVEL', 'WARN')} ({CONFIG.get('LOG_LEVEL_NUM')})")
+    logging.info(f"  Trailing Stoploss: {'Enabled' if CONFIG['ENABLE_TRAILING_STOPLOSS'] else 'Disabled'}")
+    if CONFIG['ENABLE_TRAILING_STOPLOSS']:
+        logging.info(f"    - Activate at Profit > ₹{CONFIG['TRAILING_STOPLOSS_ACTIVATE_PROFIT']:.2f}")
+        logging.info(f"    - Trail Percentage: {CONFIG['TRAILING_STOPLOSS_TRAIL_PERCENT']}%")
     logging.info(f"  Telegram Alerts: {'Enabled' if CONFIG['TELEGRAM_ENABLED'] else 'Disabled'}")
     if CONFIG['TELEGRAM_ENABLED']:
         logging.info(f"    - Send PNL Updates (env): {CONFIG['SEND_PNL_UPDATES']}")
