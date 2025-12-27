@@ -27,6 +27,8 @@ CONFIG = {
     "ENABLE_LOGGING": True,                     # Save logs to file
     # Read log file path from environment variable `LOG_FILE`, fallback to default name
     "LOG_FILE": os.getenv("LOG_FILE", "/tmp/dhan_risk_manager.log"),       # Log file name
+    # Logging level (e.g. DEBUG, INFO, WARN, ERROR). Read from .env via LOG_LEVEL
+    "LOG_LEVEL": os.getenv("LOG_LEVEL", "WARN"),
     
     # Telegram Configuration (booleans parsed from env)
     "TELEGRAM_ENABLED": os.getenv("TELEGRAM_ENABLED"),       # Enable Telegram notifications (parsed later)
@@ -55,6 +57,26 @@ CONFIG["TELEGRAM_ENABLED"] = _env_to_bool(CONFIG.get("TELEGRAM_ENABLED"), False)
 CONFIG["SEND_PNL_UPDATES"] = _env_to_bool(CONFIG.get("SEND_PNL_UPDATES"), False)
 CONFIG["SEND_ONLY_ALERTS"] = _env_to_bool(CONFIG.get("SEND_ONLY_ALERTS"), False)
 CONFIG["ENABLE_POSITION_PERCENT_TAKE"] = _env_to_bool(CONFIG.get("ENABLE_POSITION_PERCENT_TAKE"), False)
+CONFIG["ENABLE_POSITION_PERCENT_STOPLOSS"] = _env_to_bool(CONFIG.get("ENABLE_POSITION_PERCENT_STOPLOSS"), False)
+
+# Normalize log level string to numeric logging level
+try:
+    _lvl_name = str(CONFIG.get("LOG_LEVEL", "WARN")).strip().upper()
+except Exception:
+    _lvl_name = "WARN"
+
+_LOG_LEVEL_MAP = {
+    'CRITICAL': logging.CRITICAL,
+    'FATAL': logging.CRITICAL,
+    'ERROR': logging.ERROR,
+    'WARN': logging.WARNING,
+    'WARNING': logging.WARNING,
+    'INFO': logging.INFO,
+    'DEBUG': logging.DEBUG,
+    'NOTSET': logging.NOTSET
+}
+
+CONFIG["LOG_LEVEL_NUM"] = _LOG_LEVEL_MAP.get(_lvl_name, logging.WARNING)
 
 # If periodic Telegram PNL updates are enabled, disable per-check PNL sends to avoid duplicates
 if CONFIG.get("TELEGRAM_PNL_INTERVAL_SECONDS", 0) > 0:
@@ -69,29 +91,37 @@ else:
 def setup_logging():
     """Setup logging configuration with UTF-8 encoding for Windows compatibility"""
     log_format = '%(asctime)s - %(levelname)s - %(message)s'
-    
     # Create handlers with UTF-8 encoding for Windows compatibility
-    handlers = []
-    
-    if CONFIG["ENABLE_LOGGING"]:
-        # File handler with UTF-8 encoding
-        file_handler = logging.FileHandler(CONFIG["LOG_FILE"], encoding='utf-8')
-        file_handler.setFormatter(logging.Formatter(log_format))
-        handlers.append(file_handler)
-    
+    root = logging.getLogger()
+    # Remove existing handlers to avoid duplicate logs on reload
+    for h in list(root.handlers):
+        root.removeHandler(h)
+
+    # File handler with UTF-8 encoding (optional)
+    if CONFIG.get("ENABLE_LOGGING"):
+        try:
+            file_handler = logging.FileHandler(CONFIG["LOG_FILE"], encoding='utf-8')
+            file_handler.setLevel(CONFIG.get("LOG_LEVEL_NUM", logging.WARNING))
+            file_handler.setFormatter(logging.Formatter(log_format))
+            root.addHandler(file_handler)
+        except Exception:
+            # Fallback: skip file handler if it fails to open
+            pass
+
     # Console handler with UTF-8 encoding
     console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(CONFIG.get("LOG_LEVEL_NUM", logging.WARNING))
     console_handler.setFormatter(logging.Formatter(log_format))
     # Set UTF-8 encoding for console output (Python 3.7+)
     if hasattr(sys.stdout, 'reconfigure'):
-        sys.stdout.reconfigure(encoding='utf-8')
-    handlers.append(console_handler)
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format=log_format,
-        handlers=handlers
-    )
+        try:
+            sys.stdout.reconfigure(encoding='utf-8')
+        except Exception:
+            pass
+    root.addHandler(console_handler)
+
+    # Ensure root logger level is set from config
+    root.setLevel(CONFIG.get("LOG_LEVEL_NUM", logging.WARNING))
 
 # ============================================================================
 # TELEGRAM NOTIFICATION CLASS
@@ -878,6 +908,7 @@ def main():
     logging.info(f"  Daily Target: ₹{CONFIG['DAILY_TARGET']:.2f}")
     logging.info(f"  Check Interval: {CONFIG['CHECK_INTERVAL_SECONDS']} second(s)")
     logging.info(f"  Market Hours: {CONFIG['MARKET_START_TIME']} - {CONFIG['MARKET_END_TIME']}")
+    logging.info(f"  Log Level: {CONFIG.get('LOG_LEVEL', 'WARN')} ({CONFIG.get('LOG_LEVEL_NUM')})")
     logging.info(f"  Telegram Alerts: {'Enabled' if CONFIG['TELEGRAM_ENABLED'] else 'Disabled'}")
     if CONFIG['TELEGRAM_ENABLED']:
         logging.info(f"    - Send PNL Updates (env): {CONFIG['SEND_PNL_UPDATES']}")
