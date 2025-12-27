@@ -42,7 +42,7 @@ def get_dhan_token():
 
 CONFIG = {
     "ACCESS_TOKEN": get_dhan_token(),  # Dhan API Access Token
-    "DAILY_STOPLOSS": float(os.getenv("DAILY_STOPLOSS")), # Stop if loss reaches this (negative value)
+    "DAILY_STOPLOSS": float(os.getenv("DAILY_STOPLOSS")), # Stoploss threshold: negative to trigger on loss, 0 to trigger at breakeven, positive to trigger when in profit
     "DAILY_TARGET": float(os.getenv("DAILY_TARGET")), # Stop if profit reaches this (positive value)
     "CHECK_INTERVAL_SECONDS": int(os.getenv("CHECK_INTERVAL_SECONDS")), # How often to check PNL (in seconds)
     "MARKET_START_TIME": os.getenv("MARKET_START_TIME"), # Market opening time
@@ -927,8 +927,24 @@ def validate_config():
     if CONFIG["ACCESS_TOKEN"] == "YOUR_ACCESS_TOKEN_HERE":
         errors.append("ACCESS_TOKEN not configured")
     
-    if CONFIG["DAILY_STOPLOSS"] >= 0:
-        errors.append("DAILY_STOPLOSS must be negative")
+    # Allow non-negative DAILY_STOPLOSS to enable kill-switch at breakeven or profit
+    if CONFIG.get("DAILY_STOPLOSS") is None:
+        errors.append("DAILY_STOPLOSS not configured")
+
+    # Warn if stoploss is >= target — kill-switch may trigger before reaching target
+    try:
+        if (
+            CONFIG.get("DAILY_STOPLOSS") is not None
+            and CONFIG.get("DAILY_TARGET") is not None
+            and float(CONFIG["DAILY_STOPLOSS"]) >= float(CONFIG["DAILY_TARGET"])
+        ):
+            logging.warning(
+                "Configuration warning: DAILY_STOPLOSS (₹{:.2f}) >= DAILY_TARGET (₹{:.2f}) — kill-switch may trigger before reaching target"
+                .format(CONFIG["DAILY_STOPLOSS"], CONFIG["DAILY_TARGET"]) 
+            )
+    except Exception:
+        # If logging not yet configured or values invalid, skip the warning
+        pass
     
     if CONFIG["DAILY_TARGET"] <= 0:
         errors.append("DAILY_TARGET must be positive")
