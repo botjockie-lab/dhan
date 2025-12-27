@@ -817,7 +817,10 @@ def is_market_hours():
     end_time = datetime.strptime(CONFIG["MARKET_END_TIME"], "%H:%M").time()
     
     # Check if today is a weekday (Monday=0, Sunday=6)
-    is_weekday = datetime.now().weekday() < 5
+    # is_weekday = datetime.now().weekday() < 5
+
+    # OR allow on all days
+    is_weekday = True
     
     return is_weekday and start_time <= now <= end_time
 
