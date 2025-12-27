@@ -17,9 +17,31 @@ import sys
 # ============================================================================
 load_dotenv()  # Loads variables from .env into environment
 
+def get_dhan_token():
+    """Get Access Token from Env, fallback to file if missing"""
+    # 1. Try Environment Variable (.env)
+    token = os.getenv("DHAN_ACCESS_TOKEN")
+    if token and token.strip():
+        return token.strip()
+    
+    # 2. Try Fallback File
+    # (Looks for 'dhan_token.txt' in the same folder as this script)
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        token_file = os.path.join(script_dir, "dhan_token.txt")
+        
+        if os.path.exists(token_file):
+            with open(token_file, "r") as f:
+                file_token = f.read().strip()
+                if file_token:
+                    return file_token
+    except Exception as e:
+        print(f"Warning: Could not read token file: {e}")
+        
+    return None
 
 CONFIG = {
-    "ACCESS_TOKEN": os.getenv("DHAN_ACCESS_TOKEN"),
+    "ACCESS_TOKEN": get_dhan_token(),  # Dhan API Access Token
     "DAILY_STOPLOSS": float(os.getenv("DAILY_STOPLOSS")), # Stop if loss reaches this (negative value)
     "DAILY_TARGET": float(os.getenv("DAILY_TARGET")), # Stop if profit reaches this (positive value)
     "CHECK_INTERVAL_SECONDS": int(os.getenv("CHECK_INTERVAL_SECONDS")), # How often to check PNL (in seconds)
