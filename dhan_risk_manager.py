@@ -69,6 +69,7 @@ CONFIG = {
     "ENABLE_TRAILING_STOPLOSS": os.getenv("ENABLE_TRAILING_STOPLOSS"),  # Enable trailing stoploss feature
     "TRAILING_STOPLOSS_ACTIVATE_PROFIT": float(os.getenv("TRAILING_STOPLOSS_ACTIVATE_PROFIT") or 0.0), # Profit level to activate trailing
     "TRAILING_STOPLOSS_TRAIL_PERCENT": float(os.getenv("TRAILING_STOPLOSS_TRAIL_PERCENT") or 0.0),  # Trail percentage (e.g., 10 for 10%)
+    "ENABLE_KILL_SWITCH": os.getenv("ENABLE_KILL_SWITCH"),      # Activate Dhan's kill switch on limit breach
     # Telegram periodic PNL alert interval (seconds). 0 or missing => disabled
     "TELEGRAM_PNL_INTERVAL_SECONDS": int(os.getenv("TELEGRAM_PNL_INTERVAL_SECONDS") or 0),
 }
@@ -89,6 +90,7 @@ CONFIG["SEND_ONLY_ALERTS"] = _env_to_bool(CONFIG.get("SEND_ONLY_ALERTS"), False)
 CONFIG["ENABLE_POSITION_PERCENT_TAKE"] = _env_to_bool(CONFIG.get("ENABLE_POSITION_PERCENT_TAKE"), False)
 CONFIG["ENABLE_POSITION_PERCENT_STOPLOSS"] = _env_to_bool(CONFIG.get("ENABLE_POSITION_PERCENT_STOPLOSS"), False)
 CONFIG["ENABLE_TRAILING_STOPLOSS"] = _env_to_bool(CONFIG.get("ENABLE_TRAILING_STOPLOSS"), False)
+CONFIG["ENABLE_KILL_SWITCH"] = _env_to_bool(CONFIG.get("ENABLE_KILL_SWITCH"), False)
 
 # Normalize log level string to numeric logging level
 try:
@@ -230,7 +232,7 @@ class TelegramNotifier:
         
         return self.send_message(message)
     
-    def send_kill_switch_alert(self, reason, pnl, limit_value):
+    def send_kill_switch_alert(self, reason, pnl, limit_value, kill_switch_enabled=False):
         """Send kill switch activation alert"""
         if reason == "STOPLOSS":
             emoji = "🚨"
@@ -240,24 +242,38 @@ class TelegramNotifier:
             emoji = "🎯"
             title = "TARGET ACHIEVED"
             color = "🟢"
-        
+
+        if kill_switch_enabled:
+            action_title = "KILL SWITCH ACTIVATING!"
+            action_details = """
+<b>Actions being taken:</b>
+1️⃣ Squaring off all positions
+2️⃣ Cancelling all pending orders
+3️⃣ Disabling trading for today
+"""
+        else:
+            action_title = "CLOSING POSITIONS"
+            action_details = """
+<b>Actions being taken:</b>
+1️⃣ Squaring off all positions
+2️⃣ Cancelling all pending orders
+
+⚠️ <i>Kill Switch activation is disabled.</i>
+"""
+
         message = f"""
 {emoji}{emoji}{emoji} <b>{title}</b> {emoji}{emoji}{emoji}
 
 {color} <b>P&L:</b> ₹{pnl:,.2f}
 {color} <b>Limit:</b> ₹{limit_value:,.2f}
 
-⚡ <b>KILL SWITCH ACTIVATING!</b>
+⚡ <b>{action_title}</b>
 
-<b>Actions being taken:</b>
-1️⃣ Squaring off all positions
-2️⃣ Cancelling all pending orders
-3️⃣ Disabling trading for today
-
+{action_details}
 ⏰ Time: {datetime.now().strftime('%I:%M:%S %p')}
 📅 Date: {datetime.now().strftime('%d %B %Y')}
 
-🛑 <b>Complete shutdown in progress...</b>
+🛑 <b>Shutdown in progress...</b>
 """
         
         return self.send_message(message)
@@ -277,6 +293,11 @@ class TelegramNotifier:
    🚀 <b>Trailing SL Enabled</b>
       - Activate at: ₹{config['TRAILING_STOPLOSS_ACTIVATE_PROFIT']:,.2f}
       - Trail by: {config['TRAILING_STOPLOSS_TRAIL_PERCENT']}%
+"""
+        
+        if config.get("ENABLE_KILL_SWITCH"):
+            message += """
+   ✅ <b>Kill Switch Enabled</b>
 """
 
         message += f"""
@@ -756,59 +777,72 @@ class DhanRiskManager:
         if pnl <= self.daily_stoploss:
             logging.warning(f"⚠️  STOPLOSS BREACHED! P&L (₹{pnl:.2f}) <= Stoploss (₹{self.daily_stoploss:.2f})")
             
-            # Send Telegram alert before kill switch
+            # Send Telegram alert before taking action
             if self.telegram:
                 try:
-                    logging.info("Attempting to send Telegram kill-switch (STOPLOSS) alert")
-                    logging.info(f"Telegram bot present: {bool(self.telegram.bot_token)}, chat id present: {bool(self.telegram.chat_id)}")
-                    sent = self.telegram.send_kill_switch_alert("STOPLOSS", pnl, self.daily_stoploss)
-                    logging.info(f"Telegram kill-switch (STOPLOSS) alert sent: {sent}")
+                    kill_switch_enabled = CONFIG.get("ENABLE_KILL_SWITCH", False)
+                    logging.info("Attempting to send Telegram alert (STOPLOSS)")
+                    sent = self.telegram.send_kill_switch_alert("STOPLOSS", pnl, self.daily_stoploss, kill_switch_enabled)
+                    logging.info(f"Telegram alert (STOPLOSS) sent: {sent}")
                 except Exception as e:
-                    logging.error(f"Exception while sending Telegram kill-switch alert: {e}")
+                    logging.error(f"Exception while sending Telegram alert: {e}")
+            
             self.cancel_all_pending_orders()
             self.square_off_all_positions(position_details)
-            kill_switch_result = self.trigger_kill_switch(position_details)
-            if kill_switch_result[0]:
-                # Send confirmation that kill switch was activated
-                if self.telegram:
-                    try:
-                        logging.info("Sending Telegram confirmation: kill-switch ACTIVATED (STOPLOSS)")
-                        conf_msg = f"🔴 <b>Kill Switch Activated</b> (STOPLOSS)\nP&L: ₹{pnl:,.2f}\nStatus: {kill_switch_result[1]}"
-                        sent = self.telegram.send_message(conf_msg)
-                        logging.info(f"Telegram kill-switch confirmation sent: {sent}")
-                    except Exception as e:
-                        logging.error(f"Failed to send kill-switch confirmation message: {e}")
-                return ["STOPLOSS_BREACHED", kill_switch_result[1]]
+            
+            # Conditionally trigger kill switch
+            if CONFIG.get("ENABLE_KILL_SWITCH"):
+                kill_switch_result = self.trigger_kill_switch(position_details)
+                if kill_switch_result[0]:
+                    # Send confirmation that kill switch was activated
+                    if self.telegram:
+                        try:
+                            logging.info("Sending Telegram confirmation: kill-switch ACTIVATED (STOPLOSS)")
+                            conf_msg = f"🔴 <b>Kill Switch Activated</b> (STOPLOSS)\nP&L: ₹{pnl:,.2f}\nStatus: {kill_switch_result[1]}"
+                            self.telegram.send_message(conf_msg)
+                        except Exception as e:
+                            logging.error(f"Failed to send kill-switch confirmation message: {e}")
+                    return ["STOPLOSS_BREACHED", kill_switch_result[1]]
+                else:
+                    return ["KILL_SWITCH_FAILED", kill_switch_result[1]]
             else:
-                return ["KILL_SWITCH_FAILED", kill_switch_result[1]]
+                logging.warning("Skipping kill switch activation because it is disabled by default.")
+                self.kill_switch_triggered = True # Still consider it triggered to stop monitoring
+                return ["STOPLOSS_BREACHED", "Kill switch not enabled"]
 
         # Check if target is achieved
         elif pnl >= self.daily_target:
             logging.warning(f"✅ TARGET ACHIEVED! P&L (₹{pnl:.2f}) >= Target (₹{self.daily_target:.2f})")
             
-            # Send Telegram alert before kill switch
+            # Send Telegram alert before taking action
             if self.telegram:
                 try:
-                    logging.info("Attempting to send Telegram kill-switch (TARGET) alert")
-                    logging.info(f"Telegram bot present: {bool(self.telegram.bot_token)}, chat id present: {bool(self.telegram.chat_id)}")
-                    sent = self.telegram.send_kill_switch_alert("TARGET", pnl, self.daily_target)
-                    logging.info(f"Telegram kill-switch (TARGET) alert sent: {sent}")
+                    kill_switch_enabled = CONFIG.get("ENABLE_KILL_SWITCH", False)
+                    logging.info("Attempting to send Telegram alert (TARGET)")
+                    sent = self.telegram.send_kill_switch_alert("TARGET", pnl, self.daily_target, kill_switch_enabled)
+                    logging.info(f"Telegram alert (TARGET) sent: {sent}")
                 except Exception as e:
-                    logging.error(f"Exception while sending Telegram kill-switch alert: {e}")
-            kill_switch_result = self.trigger_kill_switch(position_details)
-            if kill_switch_result[0]:
-                # Send confirmation that kill switch was activated
-                if self.telegram:
-                    try:
-                        logging.info("Sending Telegram confirmation: kill-switch ACTIVATED (TARGET)")
-                        conf_msg = f"🟢 <b>Kill Switch Activated</b> (TARGET)\nP&L: ₹{pnl:,.2f}\nStatus: {kill_switch_result[1]}"
-                        sent = self.telegram.send_message(conf_msg)
-                        logging.info(f"Telegram kill-switch confirmation sent: {sent}")
-                    except Exception as e:
-                        logging.error(f"Failed to send kill-switch confirmation message: {e}")
-                return ["TARGET_ACHIEVED", kill_switch_result[1]]
+                    logging.error(f"Exception while sending Telegram alert: {e}")
+
+            # Conditionally trigger kill switch
+            if CONFIG.get("ENABLE_KILL_SWITCH"):
+                kill_switch_result = self.trigger_kill_switch(position_details)
+                if kill_switch_result[0]:
+                    # Send confirmation that kill switch was activated
+                    if self.telegram:
+                        try:
+                            logging.info("Sending Telegram confirmation: kill-switch ACTIVATED (TARGET)")
+                            conf_msg = f"🟢 <b>Kill Switch Activated</b> (TARGET)\nP&L: ₹{pnl:,.2f}\nStatus: {kill_switch_result[1]}"
+                            self.telegram.send_message(conf_msg)
+                        except Exception as e:
+                            logging.error(f"Failed to send kill-switch confirmation message: {e}")
+                    return ["TARGET_ACHIEVED", kill_switch_result[1]]
+                else:
+                    return ["KILL_SWITCH_FAILED", kill_switch_result[1]]
             else:
-                return ["KILL_SWITCH_FAILED", kill_switch_result[1]]
+                logging.warning("Skipping kill switch activation because it is disabled by default.")
+                self.kill_switch_triggered = True # Still consider it triggered to stop monitoring
+                return ["TARGET_ACHIEVED", "Kill switch not enabled"]
 
         else:
             logging.info(f"✓ Within limits. Continue trading.")
@@ -1035,6 +1069,7 @@ def main():
     if CONFIG['ENABLE_TRAILING_STOPLOSS']:
         logging.info(f"    - Activate at Profit > ₹{CONFIG['TRAILING_STOPLOSS_ACTIVATE_PROFIT']:.2f}")
         logging.info(f"    - Trail Percentage: {CONFIG['TRAILING_STOPLOSS_TRAIL_PERCENT']}%")
+    logging.info(f"  Kill Switch Activation: {'Enabled' if CONFIG['ENABLE_KILL_SWITCH'] else 'Disabled (Default)'}")
     logging.info(f"  Telegram Alerts: {'Enabled' if CONFIG['TELEGRAM_ENABLED'] else 'Disabled'}")
     if CONFIG['TELEGRAM_ENABLED']:
         logging.info(f"    - Send PNL Updates (env): {CONFIG['SEND_PNL_UPDATES']}")
