@@ -17,6 +17,7 @@ import sys
 # ============================================================================
 load_dotenv()  # Loads variables from .env into environment
 
+
 CONFIG = {
     "ACCESS_TOKEN": os.getenv("DHAN_ACCESS_TOKEN"),
     "DAILY_STOPLOSS": float(os.getenv("DAILY_STOPLOSS")), # Stop if loss reaches this (negative value)
@@ -39,6 +40,9 @@ CONFIG = {
     # Per-position percent-based profit taking
     "ENABLE_POSITION_PERCENT_TAKE": os.getenv("ENABLE_POSITION_PERCENT_TAKE"),  # Enable per-position percent take
     "POSITION_PERCENT_TAKE": float(os.getenv("POSITION_PERCENT_TAKE") or 0.0),  # Percent profit threshold per position (e.g., 5.0)
+    # Per-position percent-based stoploss
+    "ENABLE_POSITION_PERCENT_STOPLOSS": os.getenv("ENABLE_POSITION_PERCENT_STOPLOSS"),  # Enable per-position percent stoploss
+    "POSITION_PERCENT_STOPLOSS": float(os.getenv("POSITION_PERCENT_STOPLOSS") or 0.0),  # Percent stoploss threshold per position (positive value, e.g., 2.0 means -2%)
     # Telegram periodic PNL alert interval (seconds). 0 or missing => disabled
     "TELEGRAM_PNL_INTERVAL_SECONDS": int(os.getenv("TELEGRAM_PNL_INTERVAL_SECONDS") or 0),
 }
@@ -609,9 +613,12 @@ class DhanRiskManager:
                     if net_qty == 0:
                         continue
 
-                    # Try common average price keys
+                    # Try common average price keys (include Dhan's fields like buyAvg and costPrice)
                     avg_price = None
-                    for key in ('averagePrice', 'avgPrice', 'avg_price', 'average_price', 'entryPrice', 'entry_price'):
+                    for key in (
+                        'averagePrice', 'avgPrice', 'avg_price', 'average_price',
+                        'entryPrice', 'entry_price', 'buyAvg', 'costPrice'
+                    ):
                         val = pos_data.get(key)
                         if val is not None and val != "":
                             try:
@@ -621,7 +628,12 @@ class DhanRiskManager:
                                 continue
 
                     if not avg_price or avg_price == 0:
-                        logging.debug(f"Skipping percent check for {pos.get('symbol')} due to zero avg price")
+                        # Log as INFO so it's visible in normal runs and include position keys for debugging
+                        try:
+                            keys = list(pos_data.keys())
+                        except Exception:
+                            keys = None
+                        logging.info(f"Skipping percent check for {pos.get('symbol')} due to missing/zero avg price; keys={keys}")
                         continue
 
                     invested_value = abs(net_qty) * avg_price
@@ -635,20 +647,46 @@ class DhanRiskManager:
                         percent = 0
 
                     logging.info(f"{pos.get('symbol')}: P&L=₹{position_pnl:.2f} | Invested=₹{invested_value:.2f} | Percent={percent:.2f}%")
+                    # Additional debug info to help troubleshoot live discrepancies
+                    try:
+                        logging.info(f"  -> position_data keys: {list(pos_data.keys())}")
+                    except Exception:
+                        logging.info("  -> position_data keys: <unable to list keys>")
+                    logging.info(f"  -> avg_price detected: {avg_price}")
+                    logging.info(f"  -> net_qty: {net_qty}")
+                    logging.info(f"  -> invested_value: {invested_value}")
+                    logging.info(f"  -> computed percent: {percent:.4f} | threshold_pct: {threshold_pct}")
 
+                    # Check for profit-taking
                     if percent >= threshold_pct:
-                        positions_to_square.append((pos, percent))
+                        positions_to_square.append((pos, percent, 'TAKE_PROFIT'))
+
+                    # Check for per-position stoploss (negative percent)
+                    stoploss_pct = float(CONFIG.get('POSITION_PERCENT_STOPLOSS', 0.0))
+                    if CONFIG.get('ENABLE_POSITION_PERCENT_STOPLOSS') and stoploss_pct > 0:
+                        # percent is positive for profit, negative for loss
+                        if percent <= -abs(stoploss_pct):
+                            positions_to_square.append((pos, percent, 'POSITION_STOPLOSS'))
 
                 # Square off identified positions
                 if positions_to_square:
-                    for p, pct in positions_to_square:
+                    for p, pct, reason in positions_to_square:
                         sym = p.get('symbol')
-                        logging.warning(f"Position percent threshold met for {sym}: {pct:.2f}% >= {threshold_pct}% — squaring off")
+                        if reason == 'TAKE_PROFIT':
+                            logging.warning(f"Position percent threshold met for {sym}: {pct:.2f}% >= {threshold_pct}% — squaring off (TAKE PROFIT)")
+                        else:
+                            logging.warning(f"Position percent stoploss met for {sym}: {pct:.2f}% <= -{stoploss_pct:.2f}% — squaring off (POSITION STOPLOSS)")
+
                         success = self.square_off_position(p)
+                        logging.info(f"  -> square_off_position returned: {success}")
+
                         # Notify via Telegram (simple message)
                         if self.telegram:
-                            msg = f"⚡ Per-position profit target reached for <b>{sym}</b> — {pct:.2f}% ≥ {threshold_pct}%\nSquaring off {abs(int(p['position_data'].get('netQty',0)))} qty."
                             try:
+                                if reason == 'TAKE_PROFIT':
+                                    msg = f"⚡ Per-position profit target reached for <b>{sym}</b> — {pct:.2f}% ≥ {threshold_pct}%\nSquaring off {abs(int(p['position_data'].get('netQty',0)))} qty."
+                                else:
+                                    msg = f"⚠️ Per-position stoploss triggered for <b>{sym}</b> — {pct:.2f}% ≤ -{stoploss_pct:.2f}%\nSquaring off {abs(int(p['position_data'].get('netQty',0)))} qty."
                                 self.telegram.send_message(msg)
                             except Exception as e:
                                 logging.error(f"Failed to send Telegram per-position message: {e}")
