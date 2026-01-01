@@ -93,6 +93,30 @@ All configuration is done via the `.env` file.
 | `TELEGRAM_PNL_INTERVAL_SECONDS` | If `SEND_PNL_UPDATES` is `True`, sends a summary PNL update at this interval (in seconds).             | `600`       |
 | `SEND_ONLY_ALERTS`              | If `True`, only sends notifications for breached limits or trades, not regular PNL updates.               | `True`      |
 
+### Running as a Service (Google Cloud VM / Linux)
+
+To run the script in the background and ensure it restarts automatically:
+
+1.  **Update the Service File:**
+    Replace `your_username` in `dhan.service` with your actual username.
+    ```bash
+    sed -i "s/your_username/$(whoami)/g" dhan.service
+    ```
+
+2.  **Install and Start:**
+    ```bash
+    sudo cp dhan.service /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable dhan.service
+    sudo systemctl start dhan.service
+    ```
+
+3.  **Check Status & Logs:**
+    ```bash
+    sudo systemctl status dhan.service
+    sudo journalctl -u dhan.service -f
+    ```
+    *Note: If you see `status=203/EXEC`, ensure the virtual environment is created (`python3 -m venv venv`) inside the project folder.*
 
 ## Disclaimer
 

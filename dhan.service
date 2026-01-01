@@ -1,0 +1,23 @@
+[Unit]
+Description=Dhan Risk Manager Service
+After=network.target
+
+[Service]
+# Set the user and group to run the script (Run `whoami` on your VM to find this)
+User=your_username
+Group=your_username
+
+# Set the working directory to the cloned repository path
+WorkingDirectory=/home/your_username/dhan
+
+# Ensure Python output is logged immediately
+Environment=PYTHONUNBUFFERED=1
+
+# Command to run the script using the virtual environment python
+ExecStart=/home/your_username/dhan/venv/bin/python dhan_risk_manager.py
+
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
