@@ -225,11 +225,14 @@ class TelegramNotifier:
             message += "\n📋 <b>Positions:</b>\n"
             for pos in positions_data[:5]:  # Limit to 5 positions
                 pnl_emoji = "🟢" if pos['total'] >= 0 else "🔴"
-                message += f"   {pnl_emoji} {pos['symbol']}: ₹{pos['total']:,.2f}\n"
+                status_str = f" ({pos['status']})" if pos.get('status') else ""
+                message += f"   {pnl_emoji} {pos['symbol']}: ₹{pos['total']:,.2f}{status_str}\n"
             
             if len(positions_data) > 5:
                 message += f"   ... and {len(positions_data) - 5} more\n"
-        
+        else:
+            message += "\n📋 <b>All positions are closed.</b>\n"
+
         return self.send_message(message)
     
     def send_kill_switch_alert(self, reason, pnl, limit_value, kill_switch_enabled=False):
@@ -862,11 +865,21 @@ class DhanRiskManager:
                 for position in data:
                     realized_pnl = float(position.get('realizedProfit', 0))
                     unrealized_pnl = float(position.get('unrealizedProfit', 0))
+                    
+                    status = ''
+                    # If a position has a non-zero unrealizedProfit, consider it open.
+                    if unrealized_pnl != 0:
+                        status = 'OPEN'
+                    # If position has positive 'realizedProfit' and 0 'unrealizedProfit', consider it closed.
+                    elif realized_pnl > 0 and unrealized_pnl == 0:
+                        status = 'CLOSED'
+
                     positions.append({
                         'symbol': position.get('tradingSymbol', 'N/A'),
                         'realized': realized_pnl,
                         'unrealized': unrealized_pnl,
-                        'total': realized_pnl + unrealized_pnl
+                        'total': realized_pnl + unrealized_pnl,
+                        'status': status
                     })
                 
                 return positions
