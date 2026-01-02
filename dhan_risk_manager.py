@@ -311,7 +311,7 @@ class TelegramNotifier:
 
         if config.get("ENABLE_KILL_SWITCH"):
             message += """
-   ✅ <b>Kill Switch Enabled</b>
+   ✅ <b>Kill Switch Activation Enabled</b>
 """
 
         message += f"""
