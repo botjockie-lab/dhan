@@ -298,6 +298,17 @@ class TelegramNotifier:
       - Trail by: {config['TRAILING_STOPLOSS_TRAIL_PERCENT']}%
 """
         
+        if config.get("ENABLE_POSITION_PERCENT_TAKE"):
+            message += f"""
+   📈 <b>Per-Position Take-Profit Enabled</b>
+      - Profit Percent: {config['POSITION_PERCENT_TAKE']}%
+"""
+        if config.get("ENABLE_POSITION_PERCENT_STOPLOSS"):
+            message += f"""
+   🛑 <b>Per-Position Stoploss Enabled</b>
+      - Stoploss Percent: {config['POSITION_PERCENT_STOPLOSS']}%
+"""
+
         if config.get("ENABLE_KILL_SWITCH"):
             message += """
    ✅ <b>Kill Switch Enabled</b>
@@ -1082,6 +1093,12 @@ def main():
     if CONFIG['ENABLE_TRAILING_STOPLOSS']:
         logging.info(f"    - Activate at Profit > ₹{CONFIG['TRAILING_STOPLOSS_ACTIVATE_PROFIT']:.2f}")
         logging.info(f"    - Trail Percentage: {CONFIG['TRAILING_STOPLOSS_TRAIL_PERCENT']}%")
+    logging.info(f"  Per-Position Take-Profit: {'Enabled' if CONFIG['ENABLE_POSITION_PERCENT_TAKE'] else 'Disabled'}")
+    if CONFIG['ENABLE_POSITION_PERCENT_TAKE']:
+        logging.info(f"    - Profit Percent: {CONFIG['POSITION_PERCENT_TAKE']}%")
+    logging.info(f"  Per-Position Stoploss: {'Enabled' if CONFIG['ENABLE_POSITION_PERCENT_STOPLOSS'] else 'Disabled'}")
+    if CONFIG['ENABLE_POSITION_PERCENT_STOPLOSS']:
+        logging.info(f"    - Stoploss Percent: {CONFIG['POSITION_PERCENT_STOPLOSS']}%")
     logging.info(f"  Kill Switch Activation: {'Enabled' if CONFIG['ENABLE_KILL_SWITCH'] else 'Disabled (Default)'}")
     logging.info(f"  Telegram Alerts: {'Enabled' if CONFIG['TELEGRAM_ENABLED'] else 'Disabled'}")
     if CONFIG['TELEGRAM_ENABLED']:
