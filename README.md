@@ -76,7 +76,8 @@ All configuration is done via the `.env` file.
 
 | Variable                        | Description                                                                                             | Default     |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------- | ----------- |
-| `DHAN_ACCESS_TOKEN`             | Your Dhan HQ API access token.                                                                          | `""`        |
+| `DHAN_CLIENT_ID`             | Your Dhan Client ID (find it in your Dhan Profile) page - https://web.dhan.co/index/profile.                                                                          | `""`        |
+| `DHAN_ACCESS_TOKEN`             | Your Dhan HQ API access token manually generated every 24 hours from Access DhanHQ APIs page.                                                                          | `""`        |
 | `DAILY_STOPLOSS`                | PNL threshold to stop trading for the day (negative value).                                             | `-5000`     |
 | `DAILY_TARGET`                  | PNL target to stop trading for the day.                                                                 | `10000`     |
 | `CHECK_INTERVAL_SECONDS`        | How often (in seconds) to check the PNL.                                                                | `1`         |
@@ -102,13 +103,27 @@ All configuration is done via the `.env` file.
 
 To run the script in the background and ensure it restarts automatically:
 
-1.  **Update the Service File:**
+1.  **Set the time zone of your VM:**
+    ```bash
+        timedatectl list-timezones
+    ```
+
+    Replace `your_time_zone` with your actual time zone e.g `Asia/Calcutta`
+    ```bash
+        sudo timedatectl set-timezone your_time_zone
+    ```
+    Verify the change
+    ``bash
+        timedatectl
+    ```
+
+2.  **Update the Service File:**
     Replace `your_username` in `dhan.service` with your actual username.
     ```bash
     sed -i "s/your_username/$(whoami)/g" dhan.service
     ```
 
-2.  **Install and Start:**
+3.  **Install and Start:**
     ```bash
     sudo cp dhan.service /etc/systemd/system/
     sudo systemctl daemon-reload
@@ -116,7 +131,7 @@ To run the script in the background and ensure it restarts automatically:
     sudo systemctl start dhan.service
     ```
 
-3.  **Check Status & Logs:**
+4.  **Check Status & Logs:**
     ```bash
     sudo systemctl status dhan.service
     sudo journalctl -u dhan.service -f
