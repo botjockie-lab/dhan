@@ -7,10 +7,10 @@ import os
 import requests
 import schedule
 import time
-import json
 from datetime import datetime
 import logging
 import sys
+from dhanhq import DhanContext, dhanhq, TraderControl
 
 # ============================================================================
 # CONFIGURATION - UPDATE THESE VALUES
@@ -42,6 +42,7 @@ def get_dhan_token():
 
 CONFIG = {
     "ACCESS_TOKEN": get_dhan_token(),  # Dhan API Access Token
+    "DHAN_CLIENT_ID": os.getenv("DHAN_CLIENT_ID"), # Dhan Client ID
     "DAILY_STOPLOSS": float(os.getenv("DAILY_STOPLOSS")), # Stoploss threshold: negative to trigger on loss, 0 to trigger at breakeven, positive to trigger when in profit
     "DAILY_TARGET": float(os.getenv("DAILY_TARGET")), # Stop if profit reaches this (positive value)
     "CHECK_INTERVAL_SECONDS": int(os.getenv("CHECK_INTERVAL_SECONDS")), # How often to check PNL (in seconds)
@@ -341,36 +342,30 @@ class TelegramNotifier:
 
 class DhanRiskManager:
     def __init__(self, config, telegram_notifier=None):
-        self.access_token = config["ACCESS_TOKEN"]
+        dhan_context = DhanContext(
+            client_id=config["DHAN_CLIENT_ID"],
+            access_token=config["ACCESS_TOKEN"],
+        )
+        self.dhan = dhanhq(dhan_context)
+        self.trader_control = TraderControl(dhan_context)
         self.daily_stoploss = config["DAILY_STOPLOSS"]
         self.daily_target = config["DAILY_TARGET"]
-        self.base_url = "https://api.dhan.co/"
-        self.headers = {
-            "access-token": self.access_token,
-            "Content-Type": "application/json"
-        }
         self.kill_switch_triggered = False
         self.telegram = telegram_notifier
-        self.dhan_client_id = None  # Will be fetched from positions API
+        self.dhan_client_id = config["DHAN_CLIENT_ID"]
+        self.enable_kill_switch = config.get("ENABLE_KILL_SWITCH", False)
         
     def get_positions_pnl(self):
         """Fetch current positions and calculate total PNL"""
-        url = f"{self.base_url}/positions"
-        
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
-            
-            if response.status_code == 200:
-                data = response.json()
+            positions = self.dhan.get_positions()
+
+            if positions['status'] == 'success':
+                data = positions.get('data')
                 
                 if not data:
                     logging.info("No open positions found")
-                    # Return a consistent tuple: (pnl, position_details)
                     return 0, []
-                
-                # Extract client ID from first position
-                if data and not self.dhan_client_id:
-                    self.dhan_client_id = data[0].get('dhanClientId')
                 
                 total_pnl = 0
                 position_details = []
@@ -386,10 +381,9 @@ class DhanRiskManager:
                         'realized': realized_pnl,
                         'unrealized': unrealized_pnl,
                         'total': position_pnl,
-                        'position_data': position  # Store full position data for squaring off
+                        'position_data': position
                     })
                 
-                # Log position details
                 logging.info("=" * 70)
                 logging.info("CURRENT POSITIONS:")
                 for pos in position_details:
@@ -401,19 +395,10 @@ class DhanRiskManager:
                 
                 return total_pnl, position_details
                 
-            elif response.status_code == 401:
-                logging.error("Authentication failed. Please check your ACCESS_TOKEN")
-                return None, None
             else:
-                logging.error(f"Error fetching positions: {response.status_code} - {response.text}")
+                logging.error(f"Error fetching positions: {positions.get('remarks')}")
                 return None, None
                 
-        except requests.exceptions.Timeout:
-            logging.error("Request timed out while fetching positions")
-            return None, None
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Network error in get_positions_pnl: {e}")
-            return None, None
         except Exception as e:
             logging.error(f"Unexpected error in get_positions_pnl: {e}")
             return None, None
@@ -440,37 +425,27 @@ class DhanRiskManager:
                     logging.info(f"  ✓ {pos['symbol']}: No net position to square off")
                     continue
                 
-                # Determine transaction type (opposite of current position)
                 transaction_type = "SELL" if net_qty > 0 else "BUY"
-                quantity = abs(net_qty)
                 
-                # Prepare order payload
                 order_payload = {
-                    "dhanClientId": self.dhan_client_id or position_data.get('dhanClientId'),
-                    "transactionType": transaction_type,
-                    "exchangeSegment": position_data.get('exchangeSegment'),
-                    "productType": position_data.get('productType'),
-                    "orderType": "MARKET",
+                    "transaction_type": transaction_type,
+                    "exchange_segment": position_data.get('exchangeSegment'),
+                    "product_type": position_data.get('productType'),
+                    "order_type": "MARKET",
                     "validity": "DAY",
-                    "securityId": position_data.get('securityId'),
-                    "quantity": str(quantity),
-                    "disclosedQuantity": "",
-                    "price": "",
-                    "triggerPrice": "",
-                    "afterMarketOrder": False
+                    "security_id": position_data.get('securityId'),
+                    "quantity": abs(net_qty),
                 }
                 
-                # Place square off order
-                url = f"{self.base_url}/orders"
-                response = requests.post(url, headers=self.headers, json=order_payload, timeout=10)
+                response = self.dhan.place_order(**order_payload)
                 
-                if response.status_code == 200:
-                    result = response.json()
-                    logging.warning(f"  ✓ {pos['symbol']}: Squared off {quantity} qty "
-                                  f"({transaction_type}) - Order ID: {result.get('orderId')}")
+                if response['status'] == 'success':
+                    order_id = response.get('data', {}).get('orderId')
+                    logging.warning(f"  ✓ {pos['symbol']}: Squared off {abs(net_qty)} qty "
+                                  f"({transaction_type}) - Order ID: {order_id}")
                     squared_off_count += 1
                 else:
-                    logging.error(f"  ✗ {pos['symbol']}: Failed to square off - {response.text}")
+                    logging.error(f"  ✗ {pos['symbol']}: Failed to square off - {response.get('remarks')}")
                     failed_count += 1
                     
             except Exception as e:
@@ -494,32 +469,25 @@ class DhanRiskManager:
                 return True
 
             transaction_type = "SELL" if net_qty > 0 else "BUY"
-            quantity = abs(net_qty)
 
             order_payload = {
-                "dhanClientId": self.dhan_client_id or position_data.get('dhanClientId'),
-                "transactionType": transaction_type,
-                "exchangeSegment": position_data.get('exchangeSegment'),
-                "productType": position_data.get('productType'),
-                "orderType": "MARKET",
+                "transaction_type": transaction_type,
+                "exchange_segment": position_data.get('exchangeSegment'),
+                "product_type": position_data.get('productType'),
+                "order_type": "MARKET",
                 "validity": "DAY",
-                "securityId": position_data.get('securityId'),
-                "quantity": str(quantity),
-                "disclosedQuantity": "",
-                "price": "",
-                "triggerPrice": "",
-                "afterMarketOrder": False
+                "security_id": position_data.get('securityId'),
+                "quantity": abs(net_qty),
             }
 
-            url = f"{self.base_url}/orders"
-            response = requests.post(url, headers=self.headers, json=order_payload, timeout=10)
+            response = self.dhan.place_order(**order_payload)
 
-            if response.status_code == 200:
-                result = response.json()
-                logging.warning(f"  ✓ {pos['symbol']}: Squared off {quantity} qty ({transaction_type}) - Order ID: {result.get('orderId')}")
+            if response['status'] == 'success':
+                order_id = response.get('data', {}).get('orderId')
+                logging.warning(f"  ✓ {pos['symbol']}: Squared off {abs(net_qty)} qty ({transaction_type}) - Order ID: {order_id}")
                 return True
             else:
-                logging.error(f"  ✗ {pos['symbol']}: Failed to square off - {response.text}")
+                logging.error(f"  ✗ {pos['symbol']}: Failed to square off - {response.get('remarks')}")
                 return False
 
         except Exception as e:
@@ -533,23 +501,20 @@ class DhanRiskManager:
         logging.warning("=" * 70)
         
         try:
-            # Get all orders
-            url = f"{self.base_url}/orders"
-            response = requests.get(url, headers=self.headers, timeout=10)
+            orders = self.dhan.get_order_list()
             
-            if response.status_code != 200:
-                logging.error(f"Failed to fetch orders: {response.text}")
+            if orders['status'] != 'success':
+                logging.error(f"Failed to fetch orders: {orders.get('remarks')}")
                 return False
             
-            orders = response.json()
+            order_data = orders.get('data', [])
             
-            if not orders:
-                logging.info("  No pending orders found")
+            if not order_data:
+                logging.info("  No orders found")
                 return True
             
-            # Filter pending orders
             pending_orders = [
-                order for order in orders 
+                order for order in order_data
                 if order.get('orderStatus') in ['PENDING', 'TRANSIT']
             ]
             
@@ -565,15 +530,13 @@ class DhanRiskManager:
                     order_id = order.get('orderId')
                     symbol = order.get('tradingSymbol', 'N/A')
                     
-                    # Cancel order
-                    cancel_url = f"{self.base_url}/orders/{order_id}"
-                    cancel_response = requests.delete(cancel_url, headers=self.headers, timeout=10)
+                    cancel_response = self.dhan.cancel_order(order_id)
                     
-                    if cancel_response.status_code == 200:
+                    if cancel_response['status'] == 'success':
                         logging.warning(f"  ✓ Cancelled: {symbol} - Order ID: {order_id}")
                         cancelled_count += 1
                     else:
-                        logging.error(f"  ✗ Failed to cancel: {symbol} - {cancel_response.text}")
+                        logging.error(f"  ✗ Failed to cancel: {symbol} - {cancel_response.get('remarks')}")
                         failed_count += 1
                         
                 except Exception as e:
@@ -590,25 +553,18 @@ class DhanRiskManager:
             logging.error(f"Exception in cancel_all_pending_orders: {e}")
             return False
     
-    def trigger_kill_switch(self, position_details):
+    def trigger_kill_switch(self):
         """Trigger the kill switch to disable trading for the day"""
-        # Note: Kill Switch requires all positions to be closed and no pending orders
-        # It only disables trading, doesn't automatically square off positions
-        url = f"{self.base_url}/killSwitch"
-        
-        # Add query parameter for activation
-        params = {"killSwitchStatus": "ACTIVATE"}
-        
         try:
             logging.warning("🔴 INITIATING KILL SWITCH... 🔴")
             logging.warning("Note: Ensure all positions are closed and no pending orders exist")
             
-            response = requests.post(url, headers=self.headers, params=params, timeout=10)
+            response = self.trader_control.kill_switch(action="activate")
             
-            if response.status_code == 200:
-                result = response.json()
-                client_id = result.get('dhanClientId', 'N/A')
-                kill_switch_status = result.get('killSwitchStatus', 'N/A')
+            if response['status'] == 'success':
+                data = response.get('data', {})
+                client_id = data.get('dhanClientId', 'N/A')
+                kill_switch_status = data.get('killSwitchStatus', 'N/A')
                 logging.warning("=" * 70)
                 logging.warning("=" * 70)
                 if "activated" in str.lower(kill_switch_status):
@@ -624,13 +580,9 @@ class DhanRiskManager:
                     logging.error(f"Status: {kill_switch_status}")
                     return [False, kill_switch_status]
             else:
-                logging.error(f"Failed to trigger kill switch: {response.status_code}")
-                logging.error(f"Response: {response.text}")
-                return [False, response.text]
+                logging.error(f"Failed to trigger kill switch: {response.get('remarks')}")
+                return [False, response.get('remarks')]
 
-        except requests.exceptions.Timeout:
-            logging.error("Request timed out while triggering kill switch")
-            return [False, "Request timed out"]
         except Exception as e:
             logging.error(f"Exception in trigger_kill_switch: {e}")
             return [False, str(e)]
@@ -794,7 +746,7 @@ class DhanRiskManager:
             # Send Telegram alert before taking action
             if self.telegram:
                 try:
-                    kill_switch_enabled = CONFIG.get("ENABLE_KILL_SWITCH", False)
+                    kill_switch_enabled = self.enable_kill_switch
                     logging.info("Attempting to send Telegram alert (STOPLOSS)")
                     sent = self.telegram.send_kill_switch_alert("STOPLOSS", pnl, self.daily_stoploss, kill_switch_enabled)
                     logging.info(f"Telegram alert (STOPLOSS) sent: {sent}")
@@ -805,8 +757,8 @@ class DhanRiskManager:
             self.square_off_all_positions(position_details)
             
             # Conditionally trigger kill switch
-            if CONFIG.get("ENABLE_KILL_SWITCH"):
-                kill_switch_result = self.trigger_kill_switch(position_details)
+            if self.enable_kill_switch:
+                kill_switch_result = self.trigger_kill_switch()
                 if kill_switch_result[0]:
                     # Send confirmation that kill switch was activated
                     if self.telegram:
@@ -840,7 +792,7 @@ class DhanRiskManager:
 
             # Conditionally trigger kill switch
             if CONFIG.get("ENABLE_KILL_SWITCH"):
-                kill_switch_result = self.trigger_kill_switch(position_details)
+                kill_switch_result = self.trigger_kill_switch()
                 if kill_switch_result[0]:
                     # Send confirmation that kill switch was activated
                     if self.telegram:
@@ -864,28 +816,24 @@ class DhanRiskManager:
 
     def _get_positions_for_telegram(self):
         """Helper method to get position data for Telegram messages"""
-        url = f"{self.base_url}/positions"
-        
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
+            positions = self.dhan.get_positions()
             
-            if response.status_code == 200:
-                data = response.json()
-                positions = []
+            if positions['status'] == 'success':
+                data = positions.get('data', [])
+                positions_data = []
                 
                 for position in data:
                     realized_pnl = float(position.get('realizedProfit', 0))
                     unrealized_pnl = float(position.get('unrealizedProfit', 0))
                     
                     status = ''
-                    # If a position has a non-zero unrealizedProfit, consider it open.
                     if unrealized_pnl != 0:
                         status = 'OPEN'
-                    # If position has positive 'realizedProfit' and 0 'unrealizedProfit', consider it closed.
                     elif realized_pnl > 0 and unrealized_pnl == 0:
                         status = 'CLOSED'
 
-                    positions.append({
+                    positions_data.append({
                         'symbol': position.get('tradingSymbol', 'N/A'),
                         'realized': realized_pnl,
                         'unrealized': unrealized_pnl,
@@ -893,7 +841,7 @@ class DhanRiskManager:
                         'status': status
                     })
                 
-                return positions
+                return positions_data
             else:
                 return None
         except Exception as e:
@@ -934,15 +882,8 @@ def monitor_risk():
         return
     
     if risk_manager is None:
-        # Initialize Telegram notifier if enabled
-        if CONFIG["TELEGRAM_ENABLED"]:
-            telegram_notifier = TelegramNotifier(
-                bot_token=CONFIG["TELEGRAM_BOT_TOKEN"],
-                chat_id=CONFIG["TELEGRAM_CHAT_ID"],
-                enabled=True
-            )
-        
-        risk_manager = DhanRiskManager(CONFIG, telegram_notifier)
+        logging.error("Risk manager is not initialized. Skipping check.")
+        return
     
     logging.info("\n" + "=" * 70)
     logging.info(f"PNL CHECK at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -984,13 +925,8 @@ def send_periodic_pnl():
 
     # Ensure instances exist
     if risk_manager is None:
-        if CONFIG["TELEGRAM_ENABLED"]:
-            telegram_notifier = TelegramNotifier(
-                bot_token=CONFIG["TELEGRAM_BOT_TOKEN"],
-                chat_id=CONFIG["TELEGRAM_CHAT_ID"],
-                enabled=True
-            )
-        risk_manager = DhanRiskManager(CONFIG, telegram_notifier)
+        logging.error("Risk manager is not initialized. Skipping periodic PNL update.")
+        return
 
     # If kill switch already triggered, cancel further periodic updates
     if risk_manager.kill_switch_triggered:
@@ -1065,7 +1001,8 @@ def validate_config():
 
 def main():
     """Main function to start the risk manager"""
-    
+    global risk_manager, telegram_notifier
+
     # Setup logging
     setup_logging()
     
@@ -1109,18 +1046,35 @@ def main():
             logging.info(f"    - Periodic PNL interval: {CONFIG['TELEGRAM_PNL_INTERVAL_SECONDS']} second(s) (per-check PNL disabled)")
     logging.info("=" * 70)
     
-    # Initialize Telegram and send startup message
+    # Initialize Telegram and Risk Manager
     if CONFIG["TELEGRAM_ENABLED"]:
-        telegram = TelegramNotifier(
+        telegram_notifier = TelegramNotifier(
             bot_token=CONFIG["TELEGRAM_BOT_TOKEN"],
             chat_id=CONFIG["TELEGRAM_CHAT_ID"],
             enabled=True
         )
         logging.info("\nSending Telegram startup notification...")
-        telegram.send_startup_message(CONFIG)
-    
-    # Initial check
-    logging.info("\nPerforming initial PNL check...")
+        telegram_notifier.send_startup_message(CONFIG)
+    else:
+        telegram_notifier = None
+
+    risk_manager = DhanRiskManager(CONFIG, telegram_notifier)
+
+    # Perform initial API connection check, regardless of market hours
+    logging.info("\nPerforming initial API connection check...")
+    initial_pnl, _ = risk_manager.get_positions_pnl()
+
+    if initial_pnl is not None:
+        logging.info("✓ Initial API connection successful.")
+        if telegram_notifier:
+            telegram_notifier.send_message("✅ Initial API connection to Dhan successful.")
+    else:
+        logging.error("✗ Initial API connection failed. Please check token and network.")
+        if telegram_notifier:
+            telegram_notifier.send_error_alert("Initial Dhan API connection check FAILED. Please check logs.")
+
+    # Initial in-market check
+    logging.info("\nPerforming initial in-market hours PNL check...")
     monitor_risk()
     
     # Schedule periodic checks

@@ -39,6 +39,11 @@ Follow these instructions to get the risk manager up and running.
     ```bash
     pip install -r requirements.txt
     ```
+    > **Note:** This project uses a pre-release version of the `dhanhq` library. If the command above fails, you may need to install it directly using the `--pre` flag:
+    > ```bash
+    > pip install dhanhq --pre
+    > ```
+
 
 4.  **Configure your environment:**
     *   Rename the `.env.example` file to `.env`.
