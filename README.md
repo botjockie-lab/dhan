@@ -91,6 +91,7 @@ All configuration is done via the `.env` file.
 | `TRAILING_STOPLOSS_ACTIVATE_PROFIT` | The profit level at which to activate the trailing stoploss.                                            | `1000`      |
 | `TRAILING_STOPLOSS_TRAIL_PERCENT` | The percentage of profit to trail.                                                                      | `10`        |
 | `ENABLE_KILL_SWITCH`            | If `True`, will trigger Dhan's Kill Switch API when `DAILY_STOPLOSS` is breached.                       | `False`     |
+| `RUN_DAYS`                      | Days to run the script: `WEEKDAYS`, `WEEKENDS`, `ALL`, or comma-separated (e.g. `MON,WED`).             | `WEEKDAYS`  |
 | `LOG_LEVEL`                     | The level of logging detail (`INFO`, `DEBUG`, `WARNING`, `ERROR`).                                      | `INFO`      |
 | `TELEGRAM_ENABLED`              | Set to `True` to enable Telegram notifications.                                                         | `False`     |
 | `TELEGRAM_BOT_TOKEN`            | Your Telegram Bot Token.                                                                                | `""`        |

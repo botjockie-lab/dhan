@@ -71,6 +71,7 @@ CONFIG = {
     "TRAILING_STOPLOSS_ACTIVATE_PROFIT": float(os.getenv("TRAILING_STOPLOSS_ACTIVATE_PROFIT") or 0.0), # Profit level to activate trailing
     "TRAILING_STOPLOSS_TRAIL_PERCENT": float(os.getenv("TRAILING_STOPLOSS_TRAIL_PERCENT") or 0.0),  # Trail percentage (e.g., 10 for 10%)
     "ENABLE_KILL_SWITCH": os.getenv("ENABLE_KILL_SWITCH"),      # Activate Dhan's kill switch on limit breach
+    "RUN_DAYS": os.getenv("RUN_DAYS", "WEEKDAYS"),              # Days to run: ALL, WEEKDAYS, WEEKENDS, or MON,TUE...
     # Telegram periodic PNL alert interval (seconds). 0 or missing => disabled
     "TELEGRAM_PNL_INTERVAL_SECONDS": int(os.getenv("TELEGRAM_PNL_INTERVAL_SECONDS") or 0),
 }
@@ -317,6 +318,7 @@ class TelegramNotifier:
 
         message += f"""
 🕐 Market Hours: {config['MARKET_START_TIME']} - {config['MARKET_END_TIME']}
+📅 Run Days: {config.get('RUN_DAYS', 'WEEKDAYS')}
 
 ✅ Monitoring active
 ⏰ Started: {datetime.now().strftime('%I:%M:%S %p')}
@@ -854,17 +856,16 @@ class DhanRiskManager:
 
 def is_market_hours():
     """Check if current time is within market hours"""
-    now = datetime.now().time()
+    now_dt = datetime.now()
+    now_time = now_dt.time()
     start_time = datetime.strptime(CONFIG["MARKET_START_TIME"], "%H:%M").time()
     end_time = datetime.strptime(CONFIG["MARKET_END_TIME"], "%H:%M").time()
     
-    # Check if today is a weekday (Monday=0, Sunday=6)
-    # is_weekday = datetime.now().weekday() < 5
-
-    # OR allow on all days
-    is_weekday = True
+    # Check allowed days
+    allowed_days = CONFIG.get("ALLOWED_DAYS_SET", set(range(5)))
+    is_allowed_day = now_dt.weekday() in allowed_days
     
-    return is_weekday and start_time <= now <= end_time
+    return is_allowed_day and start_time <= now_time <= end_time
 
 # ============================================================================
 # MONITORING FUNCTION
@@ -981,6 +982,39 @@ def validate_config():
     
     if CONFIG["CHECK_INTERVAL_SECONDS"] < 1:
         errors.append("CHECK_INTERVAL_SECONDS must be at least 1")
+
+    # Validate and parse RUN_DAYS
+    run_days_str = str(CONFIG.get("RUN_DAYS", "WEEKDAYS")).upper().strip()
+    allowed_days = set()
+    
+    if run_days_str in ["ALL", "EVERYDAY"]:
+        allowed_days = set(range(7))
+    elif run_days_str == "WEEKDAYS":
+        allowed_days = set(range(5))
+    elif run_days_str == "WEEKENDS":
+        allowed_days = {5, 6}
+    else:
+        days_map = {
+            "MON": 0, "MONDAY": 0,
+            "TUE": 1, "TUESDAY": 1,
+            "WED": 2, "WEDNESDAY": 2,
+            "THU": 3, "THURSDAY": 3,
+            "FRI": 4, "FRIDAY": 4,
+            "SAT": 5, "SATURDAY": 5,
+            "SUN": 6, "SUNDAY": 6
+        }
+        parts = run_days_str.split(',')
+        for part in parts:
+            part = part.strip()
+            if part in days_map:
+                allowed_days.add(days_map[part])
+            elif part.isdigit() and 0 <= int(part) <= 6:
+                allowed_days.add(int(part))
+    
+    if not allowed_days:
+        errors.append(f"Invalid RUN_DAYS configuration: {CONFIG.get('RUN_DAYS')}")
+    else:
+        CONFIG["ALLOWED_DAYS_SET"] = allowed_days
 
     # Validate Telegram config if enabled
     if CONFIG["TELEGRAM_ENABLED"]:
