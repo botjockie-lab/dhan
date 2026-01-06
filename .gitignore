@@ -4,5 +4,6 @@ dhan_token.txt
 __pycache__/
 *.py[cod]
 *.pyo
-
+venv
+dhan.service
 dhan.code-workspace

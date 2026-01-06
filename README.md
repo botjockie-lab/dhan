@@ -114,6 +114,11 @@ To run the script in the background and ensure it restarts automatically:
     ```
 
 2.  **Update the Service File:**
+    Copy `dhan.service.example` to `dhan.service`
+    ```bash
+    cp dhan.service.example dhan.service
+    ```
+
     Replace `your_username` in `dhan.service` with your actual username.
     ```bash
     sed -i "s/your_username/$(whoami)/g" dhan.service
