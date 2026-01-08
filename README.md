@@ -109,7 +109,7 @@ To run the script in the background and ensure it restarts automatically:
         sudo timedatectl set-timezone your_time_zone
     ```
     Verify the change
-    ``bash
+    ```bash
         timedatectl
     ```
 
