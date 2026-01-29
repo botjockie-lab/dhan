@@ -405,7 +405,7 @@ class DhanRiskManager:
                 
             elif response.status_code == 401:
                 logging.error("Authentication failed. Please check your ACCESS_TOKEN")
-                return None, None
+                return None, "ACCESS_TOKEN_INVALID"
             else:
                 logging.error(f"Error fetching positions: {response.status_code} - {response.text}")
                 return None, None
@@ -647,9 +647,19 @@ class DhanRiskManager:
         result = self.get_positions_pnl()
         
         if result[0] is None:
-            logging.warning("Could not fetch PNL. Skipping risk check.")
+            error_reason = result[1]
+            logging.warning(f"Could not fetch PNL. Reason: {error_reason}")
+            
             if self.telegram:
-                self.telegram.send_error_alert("Failed to fetch PNL data from Dhan API")
+                if error_reason == "ACCESS_TOKEN_INVALID":
+                    self.telegram.send_error_alert("⛔ <b>CRITICAL ERROR:</b> Access Token Invalid.\n\n🛑 Script is terminating.")
+                    logging.critical("Terminating script due to invalid access token.")
+                    sys.exit(5) # Exit code 5: Do not restart
+                else:
+                    self.telegram.send_error_alert("Failed to fetch PNL data from Dhan API")
+            elif error_reason == "ACCESS_TOKEN_INVALID":
+                logging.critical("Terminating script due to invalid access token.")
+                sys.exit(5) # Exit code 5: Do not restart
             return ["ERROR", "Failed to fetch PNL"]
         
         pnl, position_details = result
@@ -1000,9 +1010,19 @@ def send_periodic_pnl():
 
     result = risk_manager.get_positions_pnl()
     if result is None or result[0] is None:
-        logging.warning("Could not fetch PNL for periodic Telegram update.")
+        error_reason = result[1] if result else None
+        logging.warning(f"Could not fetch PNL for periodic Telegram update. Reason: {error_reason}")
+        
         if telegram_notifier:
-            telegram_notifier.send_error_alert("Failed to fetch PNL for periodic update")
+            if error_reason == "ACCESS_TOKEN_INVALID":
+                telegram_notifier.send_error_alert("⛔ <b>CRITICAL ERROR:</b> Access Token Invalid (Periodic Check).\n\n🛑 Script is terminating.")
+                logging.critical("Terminating script due to invalid access token (Periodic Check).")
+                sys.exit(5) # Exit code 5: Do not restart
+            else:
+                telegram_notifier.send_error_alert("Failed to fetch PNL for periodic update")
+        elif error_reason == "ACCESS_TOKEN_INVALID":
+            logging.critical("Terminating script due to invalid access token (Periodic Check).")
+            sys.exit(5) # Exit code 5: Do not restart
         return
 
     pnl, _ = result

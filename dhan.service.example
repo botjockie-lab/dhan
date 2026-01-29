@@ -17,6 +17,7 @@ Environment=PYTHONUNBUFFERED=1
 ExecStart=/home/your_username/dhan/venv/bin/python dhan_risk_manager.py
 
 Restart=always
+RestartPreventExitStatus=5
 RestartSec=10
 
 [Install]
