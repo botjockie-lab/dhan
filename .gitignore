@@ -6,3 +6,5 @@ __pycache__/
 *.pyo
 
 dhan.code-workspace
+remote_runner.py
+.gemini
