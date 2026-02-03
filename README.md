@@ -17,9 +17,9 @@ Follow these instructions to get the risk manager up and running.
 
 ### Prerequisites
 
-*   Python 3.6+
-*   A Dhan account with API access enabled
-*   Dhan HQ API Access Token with 24 hrs validity
+*   Python 3.6+ - Download and install latest 3.x version from https://www.python.org/downloads/
+*   A Dhan account with Dhan HQ API access - (Note: Data API subscription is NOT needed to run this Risk Manager)
+*   Generate Access Token with 24 hrs validity at https://web.dhan.co/index/profile - DhanHQ Trading APIs (left sidebar)
 
 ### Installation & Deployment
 
@@ -35,12 +35,18 @@ Follow these instructions to get the risk manager up and running.
     source venv/bin/activate  # On Windows use `venv\Scripts\activate`
     ```
 
-3.  **Install the required dependencies:**
+3.  **Ensure `pip` is installed. If not, download and install it:**
+    ```bash
+        curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+        python get-pip.py
+    ```
+
+4.  **Install the required dependencies:**
     ```bash
     pip install -r requirements.txt
     ```
 
-4.  **Configure your environment:**
+5.  **Configure your environment:**
     *   Rename the `.env.example` file to `.env`.
     ```bash
     cp .env.example .env
@@ -52,17 +58,17 @@ Follow these instructions to get the risk manager up and running.
     *   Hint: In vi editor, press i to activate edit mode, Esc + :wq to save and quit or :q! to quit without saving.
 
 
-5.  **Run the risk manager:**
+6.  **Run the risk manager:**
     ```bash
     python dhan_risk_manager.py
     ```
 
-6.  **Check the script logs to see if its running without errors:**
+7.  **Check the script logs to see if its running without errors:**
     ```bash
         tail -f dhan_risk_manager.log
     ```
 
-7.  **Check Telegram messages from your bot** 
+8.  **Check Telegram messages from your bot** 
     `only if TELEGRAM_ENABLED=True and TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set in .env file.`
 
 ## Configuration
