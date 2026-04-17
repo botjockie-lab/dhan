@@ -1,6 +1,6 @@
-# dhan
+# dhan-risk-manager
 
-Dhan broker related scripts for risk management.
+Python API based Risk Manager for Dhan broker clients
 
 ## Features
 
