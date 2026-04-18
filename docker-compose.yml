@@ -1,0 +1,13 @@
+services:
+  dhan-risk-manager:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - logs:/app/logs
+    environment:
+      - LOG_FILE=/app/logs/dhan_risk_manager.log
+
+volumes:
+  logs:
