@@ -1,32 +1,35 @@
 services:
   dhan-risk-manager:
-    build: .
+    build:
+      context: .
     restart: unless-stopped
     env_file:
       - .env
     environment:
-      - LOG_FILE=/app/logs/dhan_risk_manager.log
-      - TZ=Asia/Kolkata
+      LOG_FILE: /app/logs/dhan_risk_manager.log
+      PYTHONUNBUFFERED: "1"
+      TZ: ${TZ:-Asia/Kolkata}
     volumes:
       - logs:/app/logs
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 512M
-        reservations:
-          cpus: '0.5'
-          memory: 256M
+      # Optional fallback token file mount for container deployments.
+      # Uncomment if you prefer a host file instead of DHAN_ACCESS_TOKEN in .env.
+      # - ./dhan_token.txt:/app/dhan_token.txt:ro
+    cpus: 1.0
+    mem_limit: 512m
+    mem_reservation: 256m
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 20s
     healthcheck:
-      test: ["CMD", "test", "-f", "/app/logs/dhan_risk_manager.log"]
+      test: ["CMD", "python", "-c", "import os, sys; sys.exit(0 if os.path.isfile('/app/logs/dhan_risk_manager.log') else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 20s
     logging:
-      driver: "json-file"
+      driver: json-file
       options:
-        max-size: "10m"
+        max-size: 10m
         max-file: "3"
 
 volumes:

@@ -76,8 +76,8 @@ Follow these instructions to get the risk manager up and running.
 Alternatively, you can run the risk manager in a Docker container. This is recommended for cloud deployments and ensures consistency across environments.
 
 **Prerequisites:**
-*   Docker installed - Download from https://www.docker.com/products/docker-desktop
-*   Docker Compose installed - Usually included with Docker Desktop
+*   Docker Engine installed on your Linux VPS
+*   Docker Compose v2 available as `docker compose`
 
 **Steps:**
 
@@ -93,21 +93,27 @@ Alternatively, you can run the risk manager in a Docker container. This is recom
     cp .env.example .env
     ```
     *   Edit the `.env` file and fill in your Dhan Access Token and other settings.
+    *   For VPS/container deployments, set `DHAN_ACCESS_TOKEN` in `.env`. If you prefer a file-based token, uncomment the `dhan_token.txt` bind mount in `docker-compose.yml`.
 
 3.  **Build and start the container:**
     ```bash
-    docker-compose up -d
+    docker compose up -d --build
     ```
     The `-d` flag runs the container in the background. Omit it to see logs in real-time.
 
 4.  **Check the logs:**
     ```bash
-    docker-compose logs -f dhan-risk-manager
+    docker compose logs -f dhan-risk-manager
+    ```
+
+    Check container health:
+    ```bash
+    docker compose ps
     ```
 
 5.  **Stop the container:**
     ```bash
-    docker-compose down
+    docker compose down
     ```
 
 **Docker Benefits:**
