@@ -1,0 +1,9 @@
+.git
+.vscode
+__pycache__
+*.pyc
+*.pyo
+venv
+.env
+dhan_token.txt
+*.log

@@ -68,8 +68,59 @@ Follow these instructions to get the risk manager up and running.
         tail -f dhan_risk_manager.log
     ```
 
-8.  **Check Telegram messages from your bot** 
+8.  **Check Telegram messages from your bot**
     `only if TELEGRAM_ENABLED=True and TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set in .env file.`
+
+### Running with Docker
+
+Alternatively, you can run the risk manager in a Docker container. This is recommended for cloud deployments and ensures consistency across environments.
+
+**Prerequisites:**
+*   Docker Engine installed on your Linux VPS
+*   Docker Compose v2 available as `docker compose`
+
+**Steps:**
+
+1.  **Clone and navigate to the repository:**
+    ```bash
+    git clone https://github.com/botjockie-lab/dhan.git
+    cd dhan
+    ```
+
+2.  **Configure your environment:**
+    *   Rename the `.env.example` file to `.env`.
+    ```bash
+    cp .env.example .env
+    ```
+    *   Edit the `.env` file and fill in your Dhan Access Token and other settings.
+    *   For VPS/container deployments, set `DHAN_ACCESS_TOKEN` in `.env`. If you prefer a file-based token, uncomment the `dhan_token.txt` bind mount in `docker-compose.yml`.
+
+3.  **Build and start the container:**
+    ```bash
+    docker compose up -d --build
+    ```
+    The `-d` flag runs the container in the background. Omit it to see logs in real-time.
+
+4.  **Check the logs:**
+    ```bash
+    docker compose logs -f dhan-risk-manager
+    ```
+
+    Check container health:
+    ```bash
+    docker compose ps
+    ```
+
+5.  **Stop the container:**
+    ```bash
+    docker compose down
+    ```
+
+**Docker Benefits:**
+*   No need to install Python or dependencies on your machine
+*   Easy deployment to any environment (cloud VMs, servers, local machines)
+*   Automatic restart on failure
+*   Persistent logs volume
 
 ## Configuration
 

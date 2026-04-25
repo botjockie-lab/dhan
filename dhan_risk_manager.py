@@ -1038,8 +1038,9 @@ def send_periodic_pnl():
 def validate_config():
     """Validate configuration before starting"""
     errors = []
-    
-    if CONFIG["ACCESS_TOKEN"] == "YOUR_ACCESS_TOKEN_HERE":
+
+    access_token = str(CONFIG.get("ACCESS_TOKEN") or "").strip()
+    if not access_token or access_token in {"YOUR_ACCESS_TOKEN_HERE", "your_dhan_access_token_here"}:
         errors.append("ACCESS_TOKEN not configured")
     
     # Allow non-negative DAILY_STOPLOSS to enable kill-switch at breakeven or profit
@@ -1102,10 +1103,13 @@ def validate_config():
 
     # Validate Telegram config if enabled
     if CONFIG["TELEGRAM_ENABLED"]:
-        if CONFIG["TELEGRAM_BOT_TOKEN"] == "YOUR_BOT_TOKEN":
+        telegram_bot_token = str(CONFIG.get("TELEGRAM_BOT_TOKEN") or "").strip()
+        telegram_chat_id = str(CONFIG.get("TELEGRAM_CHAT_ID") or "").strip()
+
+        if not telegram_bot_token or telegram_bot_token in {"YOUR_BOT_TOKEN", "your_telegram_bot_token"}:
             errors.append("TELEGRAM_BOT_TOKEN not configured (Telegram is enabled)")
-        
-        if CONFIG["TELEGRAM_CHAT_ID"] == "YOUR_CHAT_ID":
+
+        if not telegram_chat_id or telegram_chat_id in {"YOUR_CHAT_ID", "your_telegram_chat_id"}:
             errors.append("TELEGRAM_CHAT_ID not configured (Telegram is enabled)")
 
     # Validate Trailing Stoploss config if enabled
