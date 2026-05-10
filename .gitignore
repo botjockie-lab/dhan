@@ -8,5 +8,4 @@ __pycache__/
 venv
 dhan.service
 dhan.code-workspace
-remote_runner.py
 .gemini
