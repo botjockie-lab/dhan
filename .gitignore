@@ -9,3 +9,4 @@ venv
 dhan.service
 dhan.code-workspace
 .gemini
+.claude
