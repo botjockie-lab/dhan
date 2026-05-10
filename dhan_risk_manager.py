@@ -346,7 +346,7 @@ class DhanRiskManager:
         self.access_token = config["ACCESS_TOKEN"]
         self.daily_stoploss = config["DAILY_STOPLOSS"]
         self.daily_target = config["DAILY_TARGET"]
-        self.base_url = "https://api.dhan.co/"
+        self.base_url = "https://api.dhan.co/v2"
         self.headers = {
             "access-token": self.access_token,
             "Content-Type": "application/json"
@@ -412,6 +412,15 @@ class DhanRiskManager:
                 
         except requests.exceptions.Timeout:
             logging.error("Request timed out while fetching positions")
+            return None, None
+        except requests.exceptions.JSONDecodeError as e:
+            body_preview = (response.text or "")[:200] if 'response' in locals() else ""
+            logging.error(
+                f"Invalid JSON in positions response (status={getattr(response, 'status_code', 'N/A')}): {e} | body[:200]={body_preview!r}"
+            )
+            return None, None
+        except requests.exceptions.ConnectionError as e:
+            logging.warning(f"Connection error fetching positions (transient — will retry on next tick): {e}")
             return None, None
         except requests.exceptions.RequestException as e:
             logging.error(f"Network error in get_positions_pnl: {e}")
