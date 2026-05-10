@@ -5,6 +5,8 @@ Monitors positions PNL and triggers kill switch based on daily limits
 from dotenv import load_dotenv
 import os
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import schedule
 import time
 import json
@@ -354,13 +356,31 @@ class DhanRiskManager:
         self.kill_switch_triggered = False
         self.telegram = telegram_notifier
         self.dhan_client_id = None  # Will be fetched from positions API
-        
+        # Fade exit state: { securityId: { 'initial_qty': int, 'levels_exited': int } }
+        self.fade_exit_state = {}
+        # Reuse one TCP/TLS connection across requests; retry transient resets/5xx with backoff.
+        # Trading actions (POST orders, killSwitch, DELETE) are excluded — we never want to retry those.
+        self.session = requests.Session()
+        self.session.headers.update(self.headers)
+        retry = Retry(
+            total=3,
+            connect=3,
+            read=3,
+            backoff_factor=0.5,
+            status_forcelist=(502, 503, 504),
+            allowed_methods=frozenset(["GET"]),
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(max_retries=retry, pool_connections=4, pool_maxsize=4)
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
+
     def get_positions_pnl(self):
         """Fetch current positions and calculate total PNL"""
         url = f"{self.base_url}/positions"
-        
+
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = self.session.get(url, timeout=10)
             
             if response.status_code == 200:
                 data = response.json()
@@ -546,7 +566,7 @@ class DhanRiskManager:
         try:
             # Get all orders
             url = f"{self.base_url}/orders"
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = self.session.get(url, timeout=10)
             
             if response.status_code != 200:
                 logging.error(f"Failed to fetch orders: {response.text}")
@@ -886,9 +906,9 @@ class DhanRiskManager:
     def _get_positions_for_telegram(self):
         """Helper method to get position data for Telegram messages"""
         url = f"{self.base_url}/positions"
-        
+
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = self.session.get(url, timeout=10)
             
             if response.status_code == 200:
                 data = response.json()
