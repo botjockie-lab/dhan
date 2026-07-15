@@ -597,7 +597,7 @@ class DhanRiskManager:
         """Trigger the kill switch to disable trading for the day"""
         # Note: Kill Switch requires all positions to be closed and no pending orders
         # It only disables trading, doesn't automatically square off positions
-        url = f"{self.base_url}/killSwitch"
+        url = f"{self.base_url}/killswitch"
         
         # Add query parameter for activation
         params = {"killSwitchStatus": "ACTIVATE"}
