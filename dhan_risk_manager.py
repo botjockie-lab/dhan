@@ -346,7 +346,7 @@ class DhanRiskManager:
         self.access_token = config["ACCESS_TOKEN"]
         self.daily_stoploss = config["DAILY_STOPLOSS"]
         self.daily_target = config["DAILY_TARGET"]
-        self.base_url = "https://api.dhan.co/"
+        self.base_url = "https://api.dhan.co/v2"
         self.headers = {
             "access-token": self.access_token,
             "Content-Type": "application/json"
