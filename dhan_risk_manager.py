@@ -343,10 +343,11 @@ class TelegramNotifier:
 
 class DhanRiskManager:
     def __init__(self, config, telegram_notifier=None):
+        self.config = config
         self.access_token = config["ACCESS_TOKEN"]
         self.daily_stoploss = config["DAILY_STOPLOSS"]
         self.daily_target = config["DAILY_TARGET"]
-        self.base_url = "https://api.dhan.co/"
+        self.base_url = "https://api.dhan.co/v2"
         self.headers = {
             "access-token": self.access_token,
             "Content-Type": "application/json"
@@ -596,7 +597,7 @@ class DhanRiskManager:
         """Trigger the kill switch to disable trading for the day"""
         # Note: Kill Switch requires all positions to be closed and no pending orders
         # It only disables trading, doesn't automatically square off positions
-        url = f"{self.base_url}/killSwitch"
+        url = f"{self.base_url}/killswitch"
         
         # Add query parameter for activation
         params = {"killSwitchStatus": "ACTIVATE"}
@@ -669,9 +670,9 @@ class DhanRiskManager:
                     f"Target=₹{self.daily_target:.2f}")
 
         # Trailing Stoploss Logic
-        if CONFIG.get("ENABLE_TRAILING_STOPLOSS") and pnl > 0:
-            activation_profit = float(CONFIG.get("TRAILING_STOPLOSS_ACTIVATE_PROFIT", 0.0))
-            trail_percent = float(CONFIG.get("TRAILING_STOPLOSS_TRAIL_PERCENT", 0.0))
+        if self.config.get("ENABLE_TRAILING_STOPLOSS") and pnl > 0:
+            activation_profit = float(self.config.get("TRAILING_STOPLOSS_ACTIVATE_PROFIT", 0.0))
+            trail_percent = float(self.config.get("TRAILING_STOPLOSS_TRAIL_PERCENT", 0.0))
 
             if activation_profit > 0 and trail_percent > 0 and pnl >= activation_profit:
                 # Calculate new potential stoploss
@@ -694,8 +695,8 @@ class DhanRiskManager:
         # Send PNL update to Telegram if enabled and effective send flag is true.
         if (
             self.telegram
-            and CONFIG.get("EFFECTIVE_SEND_PNL_UPDATES", False)
-            and not CONFIG["SEND_ONLY_ALERTS"]
+            and self.config.get("EFFECTIVE_SEND_PNL_UPDATES", False)
+            and not self.config["SEND_ONLY_ALERTS"]
         ):
             # Get position details for telegram message
             positions_data = self._get_positions_for_telegram()
@@ -703,8 +704,8 @@ class DhanRiskManager:
 
         # Per-position percent-based profit-taking
         try:
-            if CONFIG.get("ENABLE_POSITION_PERCENT_TAKE") and CONFIG.get("POSITION_PERCENT_TAKE", 0) > 0:
-                threshold_pct = float(CONFIG.get("POSITION_PERCENT_TAKE", 0.0))
+            if self.config.get("ENABLE_POSITION_PERCENT_TAKE") and self.config.get("POSITION_PERCENT_TAKE", 0) > 0:
+                threshold_pct = float(self.config.get("POSITION_PERCENT_TAKE", 0.0))
                 logging.info(f"Checking per-position percent-take threshold: {threshold_pct}%")
                 positions_to_square = []
 
@@ -767,8 +768,8 @@ class DhanRiskManager:
                         positions_to_square.append((pos, percent, 'TAKE_PROFIT'))
 
                     # Check for per-position stoploss (negative percent)
-                    stoploss_pct = float(CONFIG.get('POSITION_PERCENT_STOPLOSS', 0.0))
-                    if CONFIG.get('ENABLE_POSITION_PERCENT_STOPLOSS') and stoploss_pct > 0:
+                    stoploss_pct = float(self.config.get('POSITION_PERCENT_STOPLOSS', 0.0))
+                    if self.config.get('ENABLE_POSITION_PERCENT_STOPLOSS') and stoploss_pct > 0:
                         # percent is positive for profit, negative for loss
                         if percent <= -abs(stoploss_pct):
                             positions_to_square.append((pos, percent, 'POSITION_STOPLOSS'))
@@ -806,7 +807,7 @@ class DhanRiskManager:
             # Send Telegram alert before taking action
             if self.telegram:
                 try:
-                    kill_switch_enabled = CONFIG.get("ENABLE_KILL_SWITCH", False)
+                    kill_switch_enabled = self.config.get("ENABLE_KILL_SWITCH", False)
                     logging.info("Attempting to send Telegram alert (STOPLOSS)")
                     sent = self.telegram.send_kill_switch_alert("STOPLOSS", pnl, self.daily_stoploss, kill_switch_enabled)
                     logging.info(f"Telegram alert (STOPLOSS) sent: {sent}")
@@ -817,7 +818,7 @@ class DhanRiskManager:
             self.square_off_all_positions(position_details)
             
             # Conditionally trigger kill switch
-            if CONFIG.get("ENABLE_KILL_SWITCH"):
+            if self.config.get("ENABLE_KILL_SWITCH"):
                 kill_switch_result = self.trigger_kill_switch(position_details)
                 if kill_switch_result[0]:
                     # Send confirmation that kill switch was activated
@@ -843,7 +844,7 @@ class DhanRiskManager:
             # Send Telegram alert before taking action
             if self.telegram:
                 try:
-                    kill_switch_enabled = CONFIG.get("ENABLE_KILL_SWITCH", False)
+                    kill_switch_enabled = self.config.get("ENABLE_KILL_SWITCH", False)
                     logging.info("Attempting to send Telegram alert (TARGET)")
                     sent = self.telegram.send_kill_switch_alert("TARGET", pnl, self.daily_target, kill_switch_enabled)
                     logging.info(f"Telegram alert (TARGET) sent: {sent}")
@@ -851,7 +852,7 @@ class DhanRiskManager:
                     logging.error(f"Exception while sending Telegram alert: {e}")
 
             # Conditionally trigger kill switch
-            if CONFIG.get("ENABLE_KILL_SWITCH"):
+            if self.config.get("ENABLE_KILL_SWITCH"):
                 kill_switch_result = self.trigger_kill_switch(position_details)
                 if kill_switch_result[0]:
                     # Send confirmation that kill switch was activated
