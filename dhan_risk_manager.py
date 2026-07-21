@@ -352,6 +352,10 @@ class DhanRiskManager:
             "access-token": self.access_token,
             "Content-Type": "application/json"
         }
+        # GET/DELETE calls must omit Content-Type: sending it on a body-less
+        # request makes Dhan's API silently return the marketing/docs HTML
+        # page (200 OK) instead of JSON, instead of erroring cleanly.
+        self.get_headers = {"access-token": self.access_token}
         self.kill_switch_triggered = False
         self.telegram = telegram_notifier
         self.dhan_client_id = None  # Will be fetched from positions API
@@ -359,9 +363,9 @@ class DhanRiskManager:
     def get_positions_pnl(self):
         """Fetch current positions and calculate total PNL"""
         url = f"{self.base_url}/positions"
-        
+
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = requests.get(url, headers=self.get_headers, timeout=10)
             
             if response.status_code == 200:
                 data = response.json()
@@ -538,7 +542,7 @@ class DhanRiskManager:
         try:
             # Get all orders
             url = f"{self.base_url}/orders"
-            response = requests.get(url, headers=self.headers, timeout=10)
+            response = requests.get(url, headers=self.get_headers, timeout=10)
             
             if response.status_code != 200:
                 logging.error(f"Failed to fetch orders: {response.text}")
@@ -570,7 +574,7 @@ class DhanRiskManager:
                     
                     # Cancel order
                     cancel_url = f"{self.base_url}/orders/{order_id}"
-                    cancel_response = requests.delete(cancel_url, headers=self.headers, timeout=10)
+                    cancel_response = requests.delete(cancel_url, headers=self.get_headers, timeout=10)
                     
                     if cancel_response.status_code == 200:
                         logging.warning(f"  ✓ Cancelled: {symbol} - Order ID: {order_id}")
@@ -878,10 +882,10 @@ class DhanRiskManager:
     def _get_positions_for_telegram(self):
         """Helper method to get position data for Telegram messages"""
         url = f"{self.base_url}/positions"
-        
+
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
-            
+            response = requests.get(url, headers=self.get_headers, timeout=10)
+
             if response.status_code == 200:
                 data = response.json()
                 positions = []
