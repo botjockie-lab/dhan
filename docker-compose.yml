@@ -11,9 +11,10 @@ services:
       TZ: ${TZ:-Asia/Kolkata}
     volumes:
       - logs:/app/logs
-      # Optional fallback token file mount for container deployments.
-      # Uncomment if you prefer a host file instead of DHAN_ACCESS_TOKEN in .env.
-      # - ./dhan_token.txt:/app/dhan_token.txt:ro
+      # Shared token location: generated daily by dhan_agent's
+      # generate_token.py (single generateAccessToken call for the
+      # account, mirrored here instead of each repo minting its own).
+      - ${HOME}/.dhan/access_token.txt:/app/dhan_token.txt:ro
     cpus: 1.0
     mem_limit: 512m
     mem_reservation: 256m
