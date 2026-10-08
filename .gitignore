@@ -11,3 +11,7 @@ dhan.code-workspace
 remote_runner.py
 .gemini
 .claude
+
+# Graphify
+graphify-out/cache/
+graphify-out/cost.json

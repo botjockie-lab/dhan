@@ -1,0 +1,239 @@
+{
+  "communities": {
+    "0": [
+      "dhan_risk_manager_is_market_hours",
+      "dhan_risk_manager_main",
+      "dhan_risk_manager_monitor_risk",
+      "dhan_risk_manager_rationale_1044",
+      "dhan_risk_manager_rationale_1130",
+      "dhan_risk_manager_rationale_126",
+      "dhan_risk_manager_rationale_172",
+      "dhan_risk_manager_rationale_196",
+      "dhan_risk_manager_rationale_240",
+      "dhan_risk_manager_rationale_286",
+      "dhan_risk_manager_rationale_328",
+      "dhan_risk_manager_rationale_925",
+      "dhan_risk_manager_rationale_945",
+      "dhan_risk_manager_rationale_988",
+      "dhan_risk_manager_send_periodic_pnl",
+      "dhan_risk_manager_setup_logging",
+      "dhan_risk_manager_telegramnotifier",
+      "dhan_risk_manager_telegramnotifier_init",
+      "dhan_risk_manager_telegramnotifier_send_error_alert",
+      "dhan_risk_manager_telegramnotifier_send_kill_switch_alert",
+      "dhan_risk_manager_telegramnotifier_send_message",
+      "dhan_risk_manager_telegramnotifier_send_pnl_update",
+      "dhan_risk_manager_telegramnotifier_send_startup_message",
+      "dhan_risk_manager_validate_config"
+    ],
+    "1": [
+      "dhan_risk_manager_dhanriskmanager",
+      "dhan_risk_manager_dhanriskmanager_cancel_all_pending_orders",
+      "dhan_risk_manager_dhanriskmanager_check_and_manage_risk",
+      "dhan_risk_manager_dhanriskmanager_get_positions_for_telegram",
+      "dhan_risk_manager_dhanriskmanager_get_positions_pnl",
+      "dhan_risk_manager_dhanriskmanager_init",
+      "dhan_risk_manager_dhanriskmanager_square_off_all_positions",
+      "dhan_risk_manager_dhanriskmanager_square_off_position",
+      "dhan_risk_manager_dhanriskmanager_trigger_kill_switch",
+      "dhan_risk_manager_rationale_364",
+      "dhan_risk_manager_rationale_429",
+      "dhan_risk_manager_rationale_494",
+      "dhan_risk_manager_rationale_537",
+      "dhan_risk_manager_rationale_601",
+      "dhan_risk_manager_rationale_646",
+      "dhan_risk_manager_rationale_883",
+      "patch",
+      "telegram_positions_test_telegrampositionstest",
+      "telegram_positions_test_telegrampositionstest_setup",
+      "telegram_positions_test_telegrampositionstest_test_get_positions_for_telegram"
+    ],
+    "2": [
+      "trailing_test_rationale_44",
+      "trailing_test_rationale_51",
+      "trailing_test_rationale_57",
+      "trailing_test_rationale_63",
+      "trailing_test_rationale_75",
+      "trailing_test_rationale_85",
+      "trailing_test_rationale_94",
+      "trailing_test_simpledhanriskmanager",
+      "trailing_test_simpledhanriskmanager_check_trailing_stoploss",
+      "trailing_test_simpledhanriskmanager_init",
+      "trailing_test_testtrailingstoploss",
+      "trailing_test_testtrailingstoploss_setup",
+      "trailing_test_testtrailingstoploss_test_initial_stoploss_is_respected",
+      "trailing_test_testtrailingstoploss_test_trailing_activates_at_threshold",
+      "trailing_test_testtrailingstoploss_test_trailing_disabled",
+      "trailing_test_testtrailingstoploss_test_trailing_not_activated_below_threshold",
+      "trailing_test_testtrailingstoploss_test_trailing_stoploss_does_not_move_down",
+      "trailing_test_testtrailingstoploss_test_trailing_updates_as_pnl_increases"
+    ],
+    "3": [
+      "datetime",
+      "dhan_risk_manager",
+      "dhan_risk_manager_env_to_bool",
+      "dhan_risk_manager_get_dhan_token",
+      "dhan_risk_manager_rationale_1",
+      "dhan_risk_manager_rationale_21",
+      "dotenv",
+      "dry_run",
+      "dry_run_rationale_1",
+      "json",
+      "logging",
+      "os",
+      "requests",
+      "schedule",
+      "sys",
+      "time"
+    ],
+    "4": [
+      "kill_switch_test_rationale_108",
+      "kill_switch_test_rationale_131",
+      "kill_switch_test_rationale_149",
+      "kill_switch_test_rationale_22",
+      "kill_switch_test_rationale_88",
+      "kill_switch_test_simplifieddhanriskmanager",
+      "kill_switch_test_simplifieddhanriskmanager_check_and_manage_risk",
+      "kill_switch_test_simplifieddhanriskmanager_init",
+      "kill_switch_test_testkillswitchfeature",
+      "kill_switch_test_testkillswitchfeature_setup",
+      "kill_switch_test_testkillswitchfeature_test_kill_switch_disabled_by_default_on_stoploss",
+      "kill_switch_test_testkillswitchfeature_test_kill_switch_disabled_by_default_on_target",
+      "kill_switch_test_testkillswitchfeature_test_kill_switch_enabled_and_triggered_on_stoploss",
+      "kill_switch_test_testkillswitchfeature_test_kill_switch_enabled_and_triggered_on_target",
+      "kill_switch_test_testkillswitchfeature_test_kill_switch_enabled_but_fails_on_stoploss"
+    ],
+    "5": [
+      "dry_run_fakeresponse",
+      "dry_run_fakeresponse_init",
+      "dry_run_fakeresponse_json",
+      "dry_run_main",
+      "dry_run_main_fake_get_positions_pnl",
+      "dry_run_main_fake_post"
+    ],
+    "6": [
+      "kill_switch_test",
+      "telegram_positions_test",
+      "trailing_test",
+      "unittest",
+      "unittest_mock"
+    ]
+  },
+  "cohesion": {
+    "0": 0.11231884057971014,
+    "1": 0.14210526315789473,
+    "2": 0.16339869281045752,
+    "3": 0.15,
+    "4": 0.22857142857142856,
+    "5": 0.3333333333333333,
+    "6": 0.6
+  },
+  "gods": [
+    {
+      "id": "dhan_risk_manager_dhanriskmanager",
+      "label": "DhanRiskManager",
+      "degree": 16
+    },
+    {
+      "id": "dhan_risk_manager_telegramnotifier",
+      "label": "TelegramNotifier",
+      "degree": 10
+    },
+    {
+      "id": "kill_switch_test_simplifieddhanriskmanager",
+      "label": "SimplifiedDhanRiskManager",
+      "degree": 9
+    },
+    {
+      "id": "trailing_test_testtrailingstoploss",
+      "label": "TestTrailingStoploss",
+      "degree": 8
+    },
+    {
+      "id": "dhan_risk_manager_main",
+      "label": "main()",
+      "degree": 8
+    },
+    {
+      "id": "kill_switch_test_testkillswitchfeature",
+      "label": "TestKillSwitchFeature",
+      "degree": 7
+    },
+    {
+      "id": "trailing_test_simpledhanriskmanager",
+      "label": "SimpleDhanRiskManager",
+      "degree": 6
+    },
+    {
+      "id": "dhan_risk_manager_monitor_risk",
+      "label": "monitor_risk()",
+      "degree": 6
+    },
+    {
+      "id": "dhan_risk_manager_send_periodic_pnl",
+      "label": "send_periodic_pnl()",
+      "degree": 6
+    },
+    {
+      "id": "dry_run_main",
+      "label": "main()",
+      "degree": 5
+    }
+  ],
+  "surprises": [
+    {
+      "source": "main()",
+      "target": "DhanRiskManager",
+      "source_files": [
+        "dry_run.py",
+        "dhan_risk_manager.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "TelegramPositionsTest",
+      "target": "DhanRiskManager",
+      "source_files": [
+        "telegram_positions_test.py",
+        "dhan_risk_manager.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `DhanRiskManager` connect `Community 1` to `Community 0`, `Community 3`, `Community 5`, `Community 6`?",
+      "why": "High betweenness centrality (0.352) - this node is a cross-community bridge."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 2 inferred relationships involving `main()` (e.g. with `send_periodic_pnl()` and `.send_startup_message()`) actually correct?",
+      "why": "`main()` has 2 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Community 0` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.11231884057971014 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `TestTrailingStoploss` connect `Community 2` to `Community 6`?",
+      "why": "High betweenness centrality (0.189) - this node is a cross-community bridge."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Community 1` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.14210526315789473 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `TelegramNotifier` connect `Community 0` to `Community 3`?",
+      "why": "High betweenness centrality (0.177) - this node is a cross-community bridge."
+    }
+  ]
+}
